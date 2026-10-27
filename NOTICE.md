@@ -16,7 +16,7 @@ The photo screensaver add-on and the other upstream tools used by the scripts co
 `tcl-tv-kit/theme/wallpapers/` holds 18 photographs from **Wikimedia Commons**, cropped to 16:9 and resized to 1920x1080 (an adaptation). They are **not** covered by this repository's MIT licence.
 Each keeps the licence its author chose (CC BY 2.0, CC BY 4.0, CC BY-SA 3.0 or CC BY-SA 4.0), and the adapted files are shared under that same licence. The author, title, licence and source page of
 every picture is in `tcl-tv-kit/theme/CREDITS.txt`. If you reuse them, keep that credit file with them and follow the licence of each picture.
-The screenshots in `docs/screenshots/` show some of these photographs behind the interface and carry the same credits.
+The screenshots in `docs/screenshots/` show one of them, `08-maldives.jpg` ("Diamonds Thudufushi Beach and Water Villas, May 2017 -08.jpg" by Martin Falbisoner, CC BY-SA 4.0, see `CREDITS.txt`), behind the interface; the screenshots are shared under the same licence.
 
 ## Typeface
 
