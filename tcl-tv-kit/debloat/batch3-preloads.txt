@@ -1,0 +1,10 @@
+# batch 3 - preloaded apps and services not used
+com.tcl.gallery                        # TCL gallery + photo screensaver (the launcher's clock replaces it)
+com.tcl.ui_mediaCenter                 # USB media player + DLNA renderer (VLC is installed) - re-enable for USB drives/DLNA
+com.tcl.notereminder                   # notes/reminders
+com.tcl.hearaid                        # hearing test / volume adaptation
+com.tcl.ocean.instructions             # e-manual
+com.tcl.MultiScreenInteraction_TV      # T-Cast phone-to-TV (Chromecast and Miracast are kept)
+com.google.android.marvin.talkback     # screen reader
+com.google.android.syncadapters.calendar
+com.google.android.onetimeinitializer

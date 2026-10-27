@@ -1,0 +1,6 @@
+# TCL Smart TV Pro (G05_4K_GB, AR2101 / AR25, Android 11) - batch 1: telemetry and analytics
+# Everything is DISABLED, not uninstalled. Undo: tools/restore.sh work/batch1-telemetry.txt com.google.android.apps.tv.launcherx
+com.tcl.ttvs                           # TCL BI/awareness/identifier services, Samba-style ACR; also TCL's OTA updater (owner chose to drop updates)
+com.tcl.guard                          # TGuard: device-use tracking, "health info", memory cleaner
+com.google.android.feedback            # "send feedback"
+com.google.android.partnersetup        # partner-app attribution

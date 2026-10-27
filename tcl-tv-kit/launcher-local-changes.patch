@@ -1,0 +1,2108 @@
+diff --git a/launcher/app/src/main/AndroidManifest.xml b/launcher/app/src/main/AndroidManifest.xml
+index 701b5feb..76b62db4 100644
+--- a/launcher/app/src/main/AndroidManifest.xml
++++ b/launcher/app/src/main/AndroidManifest.xml
+@@ -55,6 +55,8 @@
+             <action android:name="android.intent.action.MAIN" />
+             <category android:name="com.gathin.tvhome.category.DOCK_CARD" />
+         </intent>
++        <!-- config.xml weather_provider: the app that publishes the weather line under the date. -->
++        <provider android:authorities="local.tvweather" />
+         <!-- stock_home_redirect: HomeKeyService looks up the stock launcher's HOME activity. -->
+         <intent>
+             <action android:name="android.intent.action.MAIN" />
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/AppAdapter.java b/launcher/app/src/main/java/com/gathin/tvhome/AppAdapter.java
+index 3632d74b..a3bcb39c 100644
+--- a/launcher/app/src/main/java/com/gathin/tvhome/AppAdapter.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/AppAdapter.java
+@@ -105,13 +105,23 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+      */
+     static int tileWidthPx(int innerWidthPx, int columns, float density) {
+         int design = Math.round(DESIGN_W_DP * density);
++        // square_tile_dp: small tiles, however wide the screen (MainActivity centres the row around them).
++        if (squareTiles && squareTileDp > 0) design = Math.min(design, Math.round(squareTileDp * density));
+         if (innerWidthPx <= 0 || columns <= 0) return design;
+         int cell = innerWidthPx / columns;
+         int fit = (int) ((cell - 12 * density) / FOCUS_SCALE);
+         return Math.max(Math.round(80 * density), Math.min(design, fit));
+     }
+ 
++    /** config.xml square_tiles: tiles as tall as they are wide (set once from MainActivity.onCreate, before any layout). */
++    static boolean squareTiles;
++    /** config.xml square_tile_dp: the square tile's edge in dp, or 0 to let the columns decide (set with squareTiles). */
++    static int squareTileDp;
++    /** config.xml square_tile_aspect: the tile's height as a percentage of its width (100 = square; 90 is the tvOS-like card). */
++    static int squareTileAspect = 100;
++
+     static int tileHeightPx(int tileWidthPx) {
++        if (squareTiles) return Math.round(tileWidthPx * squareTileAspect / 100f);
+         return Math.round(tileWidthPx * DESIGN_H_DP / DESIGN_W_DP);
+     }
+ 
+@@ -425,6 +435,14 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+             iconLp.width = iconLp.height = Math.round(h * ICON_SHARE);
+             iconLp.bottomMargin = 0;
+             icon.setLayoutParams(iconLp);
++        } else if (squareTiles) {
++            // Frosted square card: the name sits small and soft inside it, under the logo.
++            android.widget.TextView label = v.findViewById(R.id.label);
++            label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, h * 0.125f);
++            label.setAlpha(1f);
++            label.setShadowLayer(h * 0.03f, 0f, h * 0.01f, 0x80000000);   // a whisper of shadow keeps the small name readable
++            // The name sits close under the logo (the logo's centre is at 41% of the tile, the name's at about 77%).
++            label.setPadding(Math.round(h * 0.04f), 0, Math.round(h * 0.04f), Math.round(h * 0.15f));
+         } else if (h < Math.round(DESIGN_H_DP * density)) {
+             // Shrunk tiles (e.g. 5 or 6 columns): scale icon and bottom margin proportionally with tile height so the label does not overlap the icon.
+             View icon = v.findViewById(R.id.icon);
+@@ -466,13 +484,17 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+         h.name.setAlpha(focused ? 1f : restNameAlpha);
+         h.card.setScaleX(focused && animations ? focusScale() : 1f);
+         h.card.setScaleY(focused && animations ? focusScale() : 1f);
+-        h.card.setTranslationY(focused && advancedEffects ? -4f * ctx.getResources().getDisplayMetrics().density : 0f);
+-        h.card.setTranslationZ(focused && advancedEffects ? 8f * ctx.getResources().getDisplayMetrics().density : 0f);
++        float bindDensity = ctx.getResources().getDisplayMetrics().density;
++        h.card.setTranslationY(focused && (advancedEffects || squareTiles) ? -(squareTiles ? 7f : 4f) * bindDensity : 0f);
++        h.card.setTranslationZ(focused && (advancedEffects || squareTiles) ? (squareTiles ? 16f : 8f) * bindDensity : 0f);
++        if (h.sheen != null) h.sheen.animateTo(focused ? 255 : 0, 0);
+         h.banner.setScaleX(focused && advancedEffects ? 1.035f : 1f);
+         h.banner.setScaleY(focused && advancedEffects ? 1.035f : 1f);
+         // A fully opaque banner covers the whole card (centerCrop), so the card's own fill under it is drawn for
+         // nothing on every frame; keep it under banners with transparent parts and under icon tiles.
+-        h.card.setBackground(e.banner != null && e.banner.getOpacity() == PixelFormat.OPAQUE ? null : h.cardBackground);
++        // square_tiles: the banner is the whole tile and may be translucent glass, so no opaque dark fill under it.
++        h.card.setBackground(squareTiles && e.banner != null ? h.backdrop
++                : e.banner != null && e.banner.getOpacity() == PixelFormat.OPAQUE ? null : h.cardBackground);
+         if (uniformTiles && e.banner == null) {
+             if (e.backdrop == null) e.backdrop = backdrop(e.icon, ambientColorAt(position));
+             h.card.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, e.backdrop));
+@@ -481,7 +503,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+             h.banner.setImageDrawable(e.banner);
+             h.banner.setVisibility(View.VISIBLE);
+             h.icon.setVisibility(View.GONE);
+-            h.label.setVisibility(View.GONE);
++            h.label.setText(e.label);
++            h.label.setVisibility(squareTiles ? View.VISIBLE : View.GONE);
+         } else {
+             h.banner.setImageDrawable(null);
+             h.banner.setVisibility(View.GONE);
+@@ -651,7 +674,11 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+         return e.banner != null ? e.banner : e.icon;
+     }
+ 
++    /** square_tiles: the focused card rises noticeably (tvOS-like) instead of the stock 10 %. */
++    static final float SQUARE_FOCUS_SCALE = 1.12f;
++
+     float focusScale() {
++        if (squareTiles) return !animations ? 1f : SQUARE_FOCUS_SCALE;
+         return !animations ? 1f : advancedEffects ? 1.12f : 1.10f;
+     }
+ 
+@@ -856,6 +883,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+ 
+     /** Corner radius for a tile of this width: 16dp at the design width, proportionally less when smaller. */
+     static float cornerRadius(int tileWidthPx, float density) {
++        if (squareTiles) return tileWidthPx * 0.22f;   // the rounded-square look of a tvOS tile
+         return 16f * density * Math.min(1f, tileWidthPx / (DESIGN_W_DP * density));
+     }
+ 
+@@ -863,6 +891,10 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+         final View card;
+         /** item_app.xml's tile_bg: the dark card behind an icon tile, or behind a banner that has transparent parts. */
+         final Drawable cardBackground;
++        /** square_tiles: the blurred wallpaper behind the card, so the glass banner on top reads as frosted glass. */
++        final Drawable backdrop;
++        /** square_tiles: the focused look (brighter surface, sheen, lit edge), drawn on the card itself and faded with focus. */
++        final LiftSheen sheen;
+         final ImageView banner;
+         final ImageView icon;
+         final TextView label;
+@@ -879,6 +911,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+             super(v);
+             card = v.findViewById(R.id.card);
+             cardBackground = card.getBackground();
++            backdrop = new GlassBackdrop.BackdropDrawable(card, 0.22f, 0f);
+             banner = v.findViewById(R.id.banner);
+             icon = v.findViewById(R.id.icon);
+             label = v.findViewById(R.id.label);
+@@ -898,6 +931,12 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+                 }
+             });
+             card.setClipToOutline(true);
++            if (squareTiles) {
++                sheen = new LiftSheen(density);
++                ((FrameLayout) card).setForeground(sheen);
++            } else {
++                sheen = null;
++            }
+ 
+             card.setOnKeyListener((view, keyCode, event) -> {
+                 if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+@@ -911,8 +950,10 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+                 view.animate().cancel();
+                 banner.animate().cancel();
+                 name.animate().cancel();
+-                float scale = !animations ? 1f : advancedEffects ? 1.12f : 1.10f;
++                if (sheen != null) sheen.animateTo(focused ? 255 : 0, !animations ? 0 : focused ? 260 : 180);
++                float scale = !animations ? 1f : squareTiles ? SQUARE_FOCUS_SCALE : advancedEffects ? 1.12f : 1.10f;
+                 float s = focused ? scale : 1f;
++                boolean floatUp = advancedEffects || squareTiles;   // square_tiles: the focused card also rises a little
+                 if (!animations) {
+                     view.setScaleX(1f);
+                     view.setScaleY(1f);
+@@ -938,8 +979,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+                     if (focused) name.setTranslationY(density * 4f);
+                 } else {
+                     view.animate().scaleX(s).scaleY(s)
+-                            .translationY(focused && advancedEffects ? -4f * density : 0f)
+-                            .translationZ(focused && advancedEffects ? 8f * density : 0f)
++                            .translationY(focused && floatUp ? -(squareTiles ? 7f : 4f) * density : 0f)
++                            .translationZ(focused && (advancedEffects || squareTiles) ? (squareTiles ? 16f : 8f) * density : 0f)
+                             .setDuration(advancedEffects ? (focused ? 220 : 170) : (focused ? 260 : 180))
+                             .setInterpolator(focused && !overshoot ? new DecelerateInterpolator(1.5f)
+                                     : new OvershootInterpolator(focused ? (advancedEffects ? 0.7f : 1.6f) : 0f))
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/AppLibraryDialog.java b/launcher/app/src/main/java/com/gathin/tvhome/AppLibraryDialog.java
+index e62db463..7dcd1681 100644
+--- a/launcher/app/src/main/java/com/gathin/tvhome/AppLibraryDialog.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/AppLibraryDialog.java
+@@ -103,6 +103,10 @@ final class AppLibraryDialog {
+     private float scrollOffset;
+     private boolean highlightShown;
+     private final int catalogWidth;
++    /** square_tiles: the library takes the Home screen's look (frosted panel, compact glass cards, each card lifts by itself). */
++    private final boolean lift = AppAdapter.squareTiles;
++    /** The panel's height: the stock library is taller, for its big cards. */
++    private int panelHeight() { return dp(lift ? 226 : 280); }
+ 
+     private void stopHighlight() {
+         if (spring != null) spring.cancel();
+@@ -133,10 +137,29 @@ final class AppLibraryDialog {
+         GradientDrawable bg = new GradientDrawable();
+         bg.setColor(color);
+         bg.setCornerRadius(dp(radius));
+-        bg.setStroke(dp(1), 0x18FFFFFF);
++        // A hairline in the lift look (the stock rim is 1 dp).
++        bg.setStroke(lift ? Math.max(1, dp(1) / 2) : dp(1), lift ? 0x22FFFFFF : 0x18FFFFFF);
+         return bg;
+     }
+ 
++    /** The focused card rises on its own (scale, a little lift, the sheen); no overlay slides between cards. */
++    private void liftCard(Row holder, boolean focused, boolean animate) {
++        View card = holder.itemView;
++        card.animate().cancel();
++        float scale = focused ? 1.10f : 1f, rise = focused ? -dp(5) : 0f;
++        long ms = focused ? 240 : 170;
++        if (!animate || !animations) {
++            card.setScaleX(scale);
++            card.setScaleY(scale);
++            card.setTranslationY(rise);
++            holder.sheen.animateTo(focused ? 255 : 0, 0);
++            return;
++        }
++        card.animate().scaleX(scale).scaleY(scale).translationY(rise).setDuration(ms)
++                .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f)).start();
++        holder.sheen.animateTo(focused ? 255 : 0, ms);
++    }
++
+     private void resize(int width, int height) {
+         popup.setWidth(width);
+         popup.setHeight(height);
+@@ -158,11 +181,19 @@ final class AppLibraryDialog {
+         panel.setLayoutDirection(rtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
+         panel.setOrientation(LinearLayout.VERTICAL);
+         panel.setPadding(dp(12), dp(8), dp(12), dp(12));
+-        panel.setBackgroundResource(R.drawable.glass_panel);
++        if (lift) {
++            // The blurred wallpaper under the panel's own glass: the same frosted look as the Home cards.
++            panel.setBackground(new android.graphics.drawable.LayerDrawable(new Drawable[]{
++                    new GlassBackdrop.BackdropDrawable(panel, 0f, dp(28)), activity.getDrawable(R.drawable.glass_panel_frost)}));
++            panel.setPadding(dp(14), dp(10), dp(14), dp(14));
++            panel.setClipChildren(false);
++        } else {
++            panel.setBackgroundResource(R.drawable.glass_panel);
++        }
+         View decor = activity.getWindow().getDecorView();
+-        catalogWidth = Math.min(dp(800), Math.max(dp(200), decor.getWidth() - dp(64)));
++        catalogWidth = Math.min(dp(lift ? 720 : 800), Math.max(dp(200), decor.getWidth() - dp(64)));
+         int width = catalogWidth;
+-        int height = dp(280);
++        int height = panelHeight();
+         popup = new PopupWindow(panel, width, height, true);
+         popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+         popup.setOutsideTouchable(true);
+@@ -196,7 +227,7 @@ final class AppLibraryDialog {
+         if (container.getLayoutParams() instanceof WindowManager.LayoutParams) {
+             WindowManager.LayoutParams params = (WindowManager.LayoutParams) container.getLayoutParams();
+             params.flags |= WindowManager.LayoutParams.FLAG_DIM_BEHIND;
+-            params.dimAmount = 0.55f;
++            params.dimAmount = lift ? 0.3f : 0.55f;
+             activity.getWindowManager().updateViewLayout(container, params);
+         }
+         panel.setAlpha(0f);
+@@ -345,22 +376,22 @@ final class AppLibraryDialog {
+ 
+     private void showCatalog() {
+         stopHighlight();
+-        resize(catalogWidth, dp(280));
++        resize(catalogWidth, panelHeight());
+         panel.removeAllViews();
+         LinearLayout header = new LinearLayout(activity);
+         header.setGravity(Gravity.CENTER_VERTICAL);
+         header.setPadding(dp(12), dp(4), dp(8), dp(4));
+-        TextView title = text(activity.getString(R.string.app_library), 22, Color.WHITE);
++        TextView title = text(activity.getString(R.string.app_library), lift ? 20 : 22, Color.WHITE);
+         header.addView(title, new LinearLayout.LayoutParams(0, dp(36), 1));
+         title.setGravity(Gravity.CENTER_VERTICAL);
+         title.setSingleLine(true);
+         title.setEllipsize(TextUtils.TruncateAt.END);
+         TextView count = text(activity.getResources().getQuantityString(
+-                R.plurals.library_app_count, totalApps, totalApps), 13, 0xA6FFFFFF);
++                R.plurals.library_app_count, totalApps, totalApps), lift ? 12 : 13, 0xA6FFFFFF);
+         count.setSingleLine(true);
+         header.addView(count, new LinearLayout.LayoutParams(-2, -2));
+         panel.addView(header, new LinearLayout.LayoutParams(-1, dp(44)));
+-        instructions = text(hint(false), 13, 0xBBFFFFFF);
++        instructions = text(hint(false), lift ? 12 : 13, lift ? 0x99FFFFFF : 0xBBFFFFFF);
+         instructions.setSingleLine(true);
+         instructions.setEllipsize(TextUtils.TruncateAt.END);
+         instructions.setPadding(dp(12), 0, dp(12), dp(6));
+@@ -386,28 +417,34 @@ final class AppLibraryDialog {
+         list.setItemAnimator(null);
+         list.setOverScrollMode(View.OVER_SCROLL_NEVER);
+         list.setClipToPadding(false);
+-        list.setPadding(dp(10), dp(8), dp(10), dp(8));
++        list.setClipChildren(false);
++        list.setPadding(dp(10), dp(lift ? 14 : 8), dp(10), dp(lift ? 14 : 8));
+         list.setAdapter(new Catalog());
+         shelf.addView(list, new FrameLayout.LayoutParams(-1, -1));
+-        highlight = new GlassView(activity, null);
+-        highlight.setRadius(dp(20));
+-        highlight.setAlpha(0f);
+-        highlight.setFocusable(false);
+-        highlight.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+-        shelf.addView(highlight, new FrameLayout.LayoutParams(dp(144), dp(180)));
+-        scrollOffset = 0;
+-        spring = new SpringAnimation(highlight, new FloatPropertyCompat<View>("libraryScrollX") {
+-            @Override public float getValue(View view) { return view.getTranslationX() + scrollOffset; }
+-            @Override public void setValue(View view, float value) { view.setTranslationX(value - scrollOffset); }
+-        });
+-        if (reducedMotion) Motion.reduce(spring);
+-        else spring.setSpring(new SpringForce().setStiffness(260f).setDampingRatio(0.58f));
+-        list.addOnScrollListener(new RecyclerView.OnScrollListener() {
+-            @Override public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
+-                scrollOffset += dx;
+-                highlight.setTranslationX(highlight.getTranslationX() - dx);
+-            }
+-        });
++        if (!lift) {
++            highlight = new GlassView(activity, null);
++            highlight.setRadius(dp(20));
++            highlight.setAlpha(0f);
++            highlight.setFocusable(false);
++            highlight.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
++            shelf.addView(highlight, new FrameLayout.LayoutParams(dp(144), dp(180)));
++            scrollOffset = 0;
++            spring = new SpringAnimation(highlight, new FloatPropertyCompat<View>("libraryScrollX") {
++                @Override public float getValue(View view) { return view.getTranslationX() + scrollOffset; }
++                @Override public void setValue(View view, float value) { view.setTranslationX(value - scrollOffset); }
++            });
++            if (reducedMotion) Motion.reduce(spring);
++            else spring.setSpring(new SpringForce().setStiffness(260f).setDampingRatio(0.58f));
++            list.addOnScrollListener(new RecyclerView.OnScrollListener() {
++                @Override public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
++                    scrollOffset += dx;
++                    highlight.setTranslationX(highlight.getTranslationX() - dx);
++                }
++            });
++        } else {
++            highlight = null;   // the lift look has no sliding overlay: each card rises by itself
++            spring = null;
++        }
+         panel.addView(shelf, new LinearLayout.LayoutParams(-1, 0, 1));
+         int position = Math.min(selectedPosition, apps.size() - 1);
+         for (int i = 0; i < apps.size(); i++) {
+@@ -596,10 +633,13 @@ final class AppLibraryDialog {
+     private final class Catalog extends RecyclerView.Adapter<Row> {
+         @NonNull @Override public Row onCreateViewHolder(@NonNull ViewGroup parent, int type) {
+             FrameLayout row = new FrameLayout(activity);
+-            RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(dp(132), dp(170));
+-            params.setMargins(dp(6), dp(2), dp(6), dp(2));
++            // Compact glass cards in the lift look: about 104 x 112 dp against the stock 132 x 170.
++            RecyclerView.LayoutParams params = lift ? new RecyclerView.LayoutParams(dp(104), dp(112))
++                    : new RecyclerView.LayoutParams(dp(132), dp(170));
++            params.setMargins(dp(lift ? 5 : 6), dp(2), dp(lift ? 5 : 6), dp(2));
+             row.setLayoutParams(params);
+-            row.setPadding(dp(10), dp(12), dp(10), dp(10));
++            if (lift) row.setPadding(dp(8), dp(16), dp(8), dp(8));
++            else row.setPadding(dp(10), dp(12), dp(10), dp(10));
+             row.setFocusableInTouchMode(true);
+             row.setClickable(true);
+             LinearLayout content = new LinearLayout(activity);
+@@ -609,14 +649,18 @@ final class AppLibraryDialog {
+             ImageView icon = new ImageView(activity);
+             icon.setId(R.id.icon);
+             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+-            content.addView(icon, new LinearLayout.LayoutParams(dp(60), dp(60)));
+-            TextView name = text("", 15, Color.WHITE);
++            content.addView(icon, new LinearLayout.LayoutParams(dp(lift ? 46 : 60), dp(lift ? 46 : 60)));
++            TextView name = text("", lift ? 12 : 15, Color.WHITE);
+             name.setId(R.id.title);
+             name.setGravity(Gravity.CENTER);
+             name.setMaxLines(2);
+-            LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, dp(44));
+-            nameParams.topMargin = dp(10);
++            LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, dp(lift ? 32 : 44));
++            nameParams.topMargin = dp(lift ? 8 : 10);
+             content.addView(name, nameParams);
++            if (lift) {
++                name.setLineSpacing(0f, 0.92f);
++                name.setShadowLayer(dp(2), 0f, dp(1), 0x66000000);
++            }
+             TextView status = text("", 11, 0xBBFFFFFF);
+             status.setId(R.id.status);
+             status.setGravity(Gravity.CENTER);
+@@ -625,9 +669,15 @@ final class AppLibraryDialog {
+             View check = new View(activity);
+             check.setId(R.id.dot);
+             FrameLayout.LayoutParams badge = new FrameLayout.LayoutParams(dp(18), dp(18), Gravity.TOP | Gravity.END);
+-            badge.setMargins(0, dp(2), dp(2), 0);
++            badge.setMargins(0, dp(lift ? 7 : 2), dp(lift ? 7 : 2), 0);
+             row.addView(check, badge);
+-            return new Row(row);
++            LiftSheen sheen = null;
++            if (lift) {
++                sheen = new LiftSheen(density);
++                row.setForeground(sheen);
++                row.setClipChildren(false);
++            }
++            return new Row(row, sheen);
+         }
+         @Override public void onBindViewHolder(@NonNull Row holder, int position) {
+             ResolveInfo app = apps.get(position);
+@@ -640,11 +690,14 @@ final class AppLibraryDialog {
+             boolean home = onHome.test(pkg);
+             boolean recent = !selectionMode && LibraryApps.recent(installTimes.getOrDefault(pkg, 0L), catalogTime);
+             status.setText(home ? R.string.library_on_home : recent ? R.string.library_recent : R.string.library_add_home);
+-            status.setVisibility(home || !okOpens ? View.VISIBLE : View.INVISIBLE);
+-            holder.itemView.setBackground(surface(home ? 0x1475BBA4 : 0x0CFFFFFF, 18));
++            status.setVisibility(lift ? View.GONE : home || !okOpens ? View.VISIBLE : View.INVISIBLE);
++            // Flat glass over the panel's own: a faint light, and a trace of green for an app that is on Home.
++            holder.itemView.setBackground(lift ? surface(home ? 0x1A75BBA4 : 0x12FFFFFF, 23)
++                    : surface(home ? 0x1475BBA4 : 0x0CFFFFFF, 18));
++            if (lift) liftCard(holder, holder.itemView.hasFocus(), false);
+             View check = holder.itemView.findViewById(R.id.dot);
+-            check.getLayoutParams().width = dp(home ? 18 : 8);
+-            check.getLayoutParams().height = dp(home ? 18 : 8);
++            check.getLayoutParams().width = dp(home ? (lift ? 14 : 18) : (lift ? 7 : 8));
++            check.getLayoutParams().height = dp(home ? (lift ? 14 : 18) : (lift ? 7 : 8));
+             if (home) check.setBackgroundResource(R.drawable.library_check);
+             else check.setBackground(surface(0xFF70D9A0, 8));
+             check.setVisibility(home || recent ? View.VISIBLE : View.GONE);
+@@ -655,6 +708,7 @@ final class AppLibraryDialog {
+             });
+             holder.itemView.setOnLongClickListener(selectionMode ? null : v -> { showActions(app, v); return true; });
+             holder.itemView.setOnFocusChangeListener((v, focused) -> {
++                if (lift) liftCard(holder, focused, true);
+                 if (focused) {
+                     selectedPackage = pkg;
+                     instructions.setText(hint(onHome.test(pkg)));
+@@ -675,6 +729,12 @@ final class AppLibraryDialog {
+     }
+ 
+     private static final class Row extends RecyclerView.ViewHolder {
+-        Row(View view) { super(view); }
++        /** The focused look drawn on the card (lift); null in the stock library. */
++        final LiftSheen sheen;
++
++        Row(View view, LiftSheen sheen) {
++            super(view);
++            this.sheen = sheen;
++        }
+     }
+ }
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/Config.java b/launcher/app/src/main/java/com/gathin/tvhome/Config.java
+index 71356fff..c9b21724 100644
+--- a/launcher/app/src/main/java/com/gathin/tvhome/Config.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/Config.java
+@@ -232,6 +232,8 @@ final class Config {
+ 
+     static final String GLOW_RADIAL = "radial", GLOW_HORIZON = "horizon";
+     static final String GLASS_DEFAULT = "glass", GLASS_RIM = "rim", GLASS_HALO = "halo";
++    /** Local style for this TV: no outline; the focused tile lifts (shadow below, a brighter glossy surface), as on tvOS. */
++    static final String GLASS_LIFT = "lift";
+     /** Show each rotating wallpaper's name from wallpapers/captions.txt (config.xml / theme wallpaper_captions). */
+     final boolean wallpaperCaptions;
+     /** Answer VIEW_INPUTS with the Inputs menu (handle_view_inputs); see InputsRequestActivity. */
+@@ -389,6 +391,7 @@ final class Config {
+         if (value == null) return GLASS_DEFAULT;
+         String v = value.trim();
+         if (GLASS_RIM.equalsIgnoreCase(v)) return GLASS_RIM;
++        if (GLASS_LIFT.equalsIgnoreCase(v)) return GLASS_LIFT;
+         return GLASS_HALO.equalsIgnoreCase(v) ? GLASS_HALO : GLASS_DEFAULT;
+     }
+ 
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/GlassBackdrop.java b/launcher/app/src/main/java/com/gathin/tvhome/GlassBackdrop.java
+new file mode 100644
+index 00000000..f19f837b
+--- /dev/null
++++ b/launcher/app/src/main/java/com/gathin/tvhome/GlassBackdrop.java
+@@ -0,0 +1,199 @@
++package com.gathin.tvhome;
++
++import android.graphics.Bitmap;
++import android.graphics.BitmapShader;
++import android.graphics.Canvas;
++import android.graphics.Matrix;
++import android.graphics.Paint;
++import android.graphics.PixelFormat;
++import android.graphics.Rect;
++import android.graphics.RectF;
++import android.graphics.Shader;
++import android.graphics.ColorFilter;
++import android.graphics.drawable.Drawable;
++import android.os.Handler;
++import android.os.Looper;
++import android.util.DisplayMetrics;
++import android.view.View;
++
++import java.lang.ref.WeakReference;
++import java.util.ArrayList;
++import java.util.Iterator;
++import java.util.List;
++
++/**
++ * Frosted glass over the wallpaper, without a live blur (Android 11 has no backdrop blur API, and a GPU blur of the
++ * whole screen every frame would be too heavy for this TV). The wallpaper is blurred ONCE, at 192 x 108, when it is
++ * decoded (WallpaperPlayer); each glass surface (a tile, the weather pill, a top button) then paints the slice of that
++ * blurred copy that lies behind it, and its own light glass layer goes on top. Cost: a few milliseconds per wallpaper
++ * change and an 80 KB bitmap. With no wallpaper there is no blurred copy and the surfaces keep their plain glass.
++ */
++final class GlassBackdrop {
++    private static final int SMALL_W = 192, SMALL_H = 108;
++    /**
++     * Box-blur radius in cells of the small copy (a cell is 10 px on a 1080p screen), applied twice: a blur of about 20 px,
++     * a good tenth of a tile, so the scene's large colour shapes stay readable through the glass (soft, not mud).
++     */
++    private static final int RADIUS = 2, PASSES = 2;
++    /** Glass looks richer than what is behind it: the blurred colours are pushed this far from grey (Apple does the same). */
++    private static final float SATURATION = 1.35f;
++    private static final Handler MAIN = new Handler(Looper.getMainLooper());
++    private static final List<WeakReference<BackdropDrawable>> DRAWABLES = new ArrayList<>();
++    private static volatile Bitmap blurred;
++
++    private GlassBackdrop() {
++    }
++
++    static Bitmap get() {
++        return blurred;
++    }
++
++    /** Makes the blurred copy of a decoded (software) wallpaper, framed as the screen shows it (centre crop). */
++    static Bitmap blur(Bitmap decoded, int screenW, int screenH) {
++        try {
++            int sw = decoded.getWidth(), sh = decoded.getHeight();
++            if (sw <= 0 || sh <= 0 || screenW <= 0 || screenH <= 0) return null;
++            float scale = Math.max((float) screenW / sw, (float) screenH / sh);
++            float cw = screenW / scale, ch = screenH / scale;
++            Rect src = new Rect(Math.round((sw - cw) / 2), Math.round((sh - ch) / 2),
++                    Math.round((sw + cw) / 2), Math.round((sh + ch) / 2));
++            Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
++            // Two bilinear steps (to 4x, then to 1x of the small size) so the picture is averaged, not sampled.
++            Bitmap mid = Bitmap.createBitmap(SMALL_W * 4, SMALL_H * 4, Bitmap.Config.ARGB_8888);
++            new Canvas(mid).drawBitmap(decoded, src, new Rect(0, 0, mid.getWidth(), mid.getHeight()), paint);
++            Bitmap small = Bitmap.createBitmap(SMALL_W, SMALL_H, Bitmap.Config.ARGB_8888);
++            new Canvas(small).drawBitmap(mid, null, new Rect(0, 0, SMALL_W, SMALL_H), paint);
++            mid.recycle();
++            int n = SMALL_W * SMALL_H;
++            int[] px = new int[n];
++            small.getPixels(px, 0, SMALL_W, 0, 0, SMALL_W, SMALL_H);
++            int[][] ch3 = new int[3][n];
++            for (int i = 0; i < n; i++) {
++                ch3[0][i] = (px[i] >> 16) & 0xFF;
++                ch3[1][i] = (px[i] >> 8) & 0xFF;
++                ch3[2][i] = px[i] & 0xFF;
++            }
++            int[] tmp = new int[n];
++            for (int c = 0; c < 3; c++) {
++                for (int p = 0; p < PASSES; p++) {
++                    box(ch3[c], tmp, SMALL_W, SMALL_H, RADIUS, true);
++                    box(tmp, ch3[c], SMALL_W, SMALL_H, RADIUS, false);
++                }
++            }
++            for (int i = 0; i < n; i++) {
++                int r = ch3[0][i], g = ch3[1][i], b = ch3[2][i];
++                float grey = 0.299f * r + 0.587f * g + 0.114f * b;
++                r = clamp(Math.round(grey + SATURATION * (r - grey)));
++                g = clamp(Math.round(grey + SATURATION * (g - grey)));
++                b = clamp(Math.round(grey + SATURATION * (b - grey)));
++                px[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
++            }
++            small.setPixels(px, 0, SMALL_W, 0, 0, SMALL_W, SMALL_H);
++            return small;
++        } catch (Throwable failure) {
++            return null;
++        }
++    }
++
++    private static int clamp(int v) {
++        return v < 0 ? 0 : Math.min(v, 255);
++    }
++
++    /** One box-blur pass along a row (horizontal) or a column, edges clamped. */
++    private static void box(int[] in, int[] out, int w, int h, int r, boolean horizontal) {
++        int div = 2 * r + 1;
++        int lines = horizontal ? h : w, len = horizontal ? w : h;
++        int step = horizontal ? 1 : w, lineStep = horizontal ? w : 1;
++        for (int l = 0; l < lines; l++) {
++            int base = l * lineStep;
++            int sum = 0;
++            for (int i = -r; i <= r; i++) sum += in[base + Math.max(0, Math.min(len - 1, i)) * step];
++            for (int i = 0; i < len; i++) {
++                out[base + i * step] = sum / div;
++                sum += in[base + Math.min(len - 1, i + r + 1) * step] - in[base + Math.max(0, i - r) * step];
++            }
++        }
++    }
++
++    /** Makes a new blurred copy current and repaints every glass surface. */
++    static void publish(Bitmap b) {
++        if (b == null) return;
++        blurred = b;
++        MAIN.post(() -> {
++            synchronized (DRAWABLES) {
++                for (Iterator<WeakReference<BackdropDrawable>> it = DRAWABLES.iterator(); it.hasNext(); ) {
++                    BackdropDrawable d = it.next().get();
++                    if (d == null) it.remove();
++                    else d.invalidateSelf();
++                }
++            }
++        });
++    }
++
++    /**
++     * The slice of the blurred wallpaper behind one view, as rounded glass: radius is a fraction of the width
++     * (tiles), a fixed size in px, or both 0 for a full pill or circle (half the shorter side). Draw it as the first layer
++     * of the view's background. It repaints when the view is laid out again (it may have moved) and when the wallpaper changes.
++     */
++    static final class BackdropDrawable extends Drawable {
++        private final View host;
++        private final float radiusFraction, radiusPx;
++        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
++        private final Matrix matrix = new Matrix();
++        private final RectF rect = new RectF();
++        private final int[] location = new int[2];
++        private final int screenW, screenH;
++        private Bitmap shaderBitmap;
++        private BitmapShader shader;
++
++        BackdropDrawable(View host, float radiusFraction, float radiusPx) {
++            this.host = host;
++            this.radiusFraction = radiusFraction;
++            this.radiusPx = radiusPx;
++            DisplayMetrics m = host.getResources().getDisplayMetrics();
++            screenW = m.widthPixels;
++            screenH = m.heightPixels;
++            host.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> invalidateSelf());
++            synchronized (DRAWABLES) {
++                DRAWABLES.add(new WeakReference<>(this));
++            }
++        }
++
++        @Override
++        public void draw(Canvas canvas) {
++            Bitmap bmp = blurred;
++            Rect bounds = getBounds();
++            if (bmp == null || bounds.isEmpty()) return;
++            if (bmp != shaderBitmap) {
++                shaderBitmap = bmp;
++                shader = new BitmapShader(bmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
++                paint.setShader(shader);
++            }
++            // On screen, not in the window: a popup (the app library) is a window of its own, offset from the screen's origin.
++            host.getLocationOnScreen(location);
++            // Bitmap pixel -> screen pixel -> this view's own coordinates.
++            matrix.setScale((float) screenW / bmp.getWidth(), (float) screenH / bmp.getHeight());
++            matrix.postTranslate(-location[0], -location[1]);
++            shader.setLocalMatrix(matrix);
++            rect.set(bounds);
++            float r = radiusFraction > 0 ? radiusFraction * rect.width()
++                    : radiusPx > 0 ? radiusPx : Math.min(rect.width(), rect.height()) / 2f;
++            canvas.drawRoundRect(rect, r, r, paint);
++        }
++
++        @Override
++        public void setAlpha(int alpha) {
++            paint.setAlpha(alpha);
++        }
++
++        @Override
++        public void setColorFilter(ColorFilter colorFilter) {
++            paint.setColorFilter(colorFilter);
++        }
++
++        @Override
++        public int getOpacity() {
++            return PixelFormat.TRANSLUCENT;
++        }
++    }
++}
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/GlassView.java b/launcher/app/src/main/java/com/gathin/tvhome/GlassView.java
+index 0fd2b6cd..9a013955 100644
+--- a/launcher/app/src/main/java/com/gathin/tvhome/GlassView.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/GlassView.java
+@@ -12,13 +12,23 @@ import android.view.View;
+ /**
+  * A translucent glass slab: soft sheen fill, bright top specular, crisp rim and a faint outer glow.
+  * One instance floats over the grid and is moved with spring animations between tiles.
++ *
++ * Local style "lift" (config glass_style): no outline at all. The focused tile floats: a soft shadow under it (strongest
++ * at the bottom, none above), a faintly brighter surface and a diagonal specular sheen from the top-left corner, and only
++ * a hairline edge lit from above. This is what tvOS does instead of a border.
+  */
+ public class GlassView extends View {
+ 
++    /** Room around the slab: the glow for the stock styles, the shadow for lift. */
++    private static final float INSET_DP = 6f, LIFT_INSET_DP = 24f;
++    /** Set once from setStyle (one GlassView exists): MainActivity sizes the view with insetPx. */
++    private static boolean liftStyle;
++
+     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+     private final Paint specular = new Paint(Paint.ANTI_ALIAS_FLAG);
+     private final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+     private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
+     private final RectF rect = new RectF();
+     private final float density;
+     private float radius;
+@@ -29,6 +39,7 @@ public class GlassView extends View {
+     /** glass_style rim or halo: no sheen and no fill, only the crisp rim (and, for halo, a lighter outer glow). */
+     private boolean flat;
+     private boolean halo;
++    private boolean lift;
+ 
+     public GlassView(Context context, AttributeSet attrs) {
+         super(context, attrs);
+@@ -38,12 +49,18 @@ public class GlassView extends View {
+         rim.setStrokeWidth(1.5f * density);
+         rim.setColor(0xCCFFFFFF);
+         glow.setStyle(Paint.Style.STROKE);
++        shadow.setStyle(Paint.Style.STROKE);
+         // Cache the slab as a texture. The spring only changes translation, so the GPU can
+         // move it without replaying clipPath and the glow on every frame. That path is
+         // software-rendered on the MT5895 and is what makes the highlight crawl.
+         setLayerType(LAYER_TYPE_HARDWARE, null);
+     }
+ 
++    /** The space MainActivity leaves around the zoomed tile for this style (glow, or the lift shadow). */
++    static float insetPx(float density) {
++        return (liftStyle ? LIFT_INSET_DP : INSET_DP) * density;
++    }
++
+     /** Tints the rim and the outer glow; 0 restores the plain white glass. */
+     void setAccent(int argb) {
+         if (argb == 0) {
+@@ -63,9 +80,11 @@ public class GlassView extends View {
+ 
+     /** One of Config's GLASS_* styles. */
+     void setStyle(String style) {
++        lift = Config.GLASS_LIFT.equals(style);
++        liftStyle = lift;
+         flat = Config.GLASS_RIM.equals(style) || Config.GLASS_HALO.equals(style);
+         halo = Config.GLASS_HALO.equals(style);
+-        rim.setStrokeWidth((flat ? 2f : 1.5f) * density);
++        rim.setStrokeWidth((lift ? 1.2f : flat ? 2f : 1.5f) * density);
+         invalidate();
+     }
+ 
+@@ -77,12 +96,31 @@ public class GlassView extends View {
+     @Override
+     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+         super.onSizeChanged(w, h, oldw, oldh);
++        if (lift) {
++            float inset = LIFT_INSET_DP * density;
++            float top = inset, bottom = h - inset, left = inset, right = w - inset;
++            // A faint brightening, a little more at the top.
++            fill.setShader(new LinearGradient(0, top, 0, bottom, 0x1CFFFFFF, 0x0AFFFFFF, Shader.TileMode.CLAMP));
++            // The specular sheen: a diagonal light from the top-left corner that is gone before the middle.
++            specular.setShader(new LinearGradient(left, top, left + (right - left) * 0.85f, top + (bottom - top) * 0.85f,
++                    0x42FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
++            // The edge is lit from above: brightest on top, almost gone at the bottom.
++            rim.setShader(new LinearGradient(0, top, 0, bottom, 0x8CFFFFFF, 0x1FFFFFFF, Shader.TileMode.CLAMP));
++            // The shadow falls from the tile's top edge (none) to below its bottom edge (full): bottom-weighted.
++            shadow.setShader(new LinearGradient(0, top + (bottom - top) * 0.35f, 0, bottom + inset * 0.9f,
++                    0x00000000, 0xFF000000, Shader.TileMode.CLAMP));
++            return;
++        }
+         fill.setShader(new LinearGradient(0, 0, 0, h, 0x3DFFFFFF, 0x12FFFFFF, Shader.TileMode.CLAMP));
+         specular.setShader(new LinearGradient(0, 0, 0, h * 0.45f, 0x66FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+     }
+ 
+     @Override
+     protected void onDraw(Canvas canvas) {
++        if (lift) {
++            drawLift(canvas);
++            return;
++        }
+         float inset = 6f * density;   // room for the glow
+         rect.set(inset, inset, getWidth() - inset, getHeight() - inset);
+ 
+@@ -117,4 +155,27 @@ public class GlassView extends View {
+ 
+         canvas.drawRoundRect(rect, radius, radius, rim);
+     }
++
++    /** The lifted tile: shadow rings outside the slab (never over the tile), then the faint surface, sheen and hairline edge. */
++    private void drawLift(Canvas canvas) {
++        float inset = LIFT_INSET_DP * density;
++        rect.set(inset, inset, getWidth() - inset, getHeight() - inset);
++
++        // Soft shadow: many thin rings, each outside the last and fainter, shifted a little down; the vertical gradient
++        // shader on the paint (see onSizeChanged) removes it above the tile. The hardware layer caches the result.
++        int rings = 22;
++        float spread = inset * 0.92f, step = spread / rings, dy = 5f * density;
++        shadow.setStrokeWidth(step + 0.6f);
++        for (int i = 0; i < rings; i++) {
++            float o = step * (i + 0.5f);
++            float t = 1f - (float) i / rings;
++            shadow.setAlpha(Math.round(70f * t * t));   // 0..70 of 255, falling off like a blur
++            canvas.drawRoundRect(rect.left - o, rect.top - o + dy, rect.right + o, rect.bottom + o + dy,
++                    radius + o, radius + o, shadow);
++        }
++
++        canvas.drawRoundRect(rect, radius, radius, fill);
++        canvas.drawRoundRect(rect, radius, radius, specular);
++        canvas.drawRoundRect(rect, radius, radius, rim);
++    }
+ }
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/LiftSheen.java b/launcher/app/src/main/java/com/gathin/tvhome/LiftSheen.java
+new file mode 100644
+index 00000000..48b26563
+--- /dev/null
++++ b/launcher/app/src/main/java/com/gathin/tvhome/LiftSheen.java
+@@ -0,0 +1,95 @@
++package com.gathin.tvhome;
++
++import android.animation.ValueAnimator;
++import android.graphics.Canvas;
++import android.graphics.ColorFilter;
++import android.graphics.LinearGradient;
++import android.graphics.Paint;
++import android.graphics.PixelFormat;
++import android.graphics.Rect;
++import android.graphics.RectF;
++import android.graphics.Shader;
++import android.graphics.drawable.Drawable;
++import android.view.animation.DecelerateInterpolator;
++
++/**
++ * The look of a focused tile (square_tiles, glass_style lift), drawn ON the tile as its foreground: a faintly brighter
++ * surface, a diagonal specular sheen from the top-left corner and an edge lit from above. It fades in as the tile gains
++ * focus and out as it loses it, so it moves with the tile (it scales and lifts with it) instead of being a separate
++ * overlay that slides between tiles. The shadow under the tile is the tile's own elevation.
++ */
++final class LiftSheen extends Drawable {
++    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Paint sheen = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final RectF rect = new RectF();
++    private final float rimWidth;
++    /** 0 (not focused) to 255 (focused); animated. */
++    private int level;
++    private ValueAnimator animator;
++
++    LiftSheen(float density) {
++        rimWidth = 1.2f * density;
++        rim.setStyle(Paint.Style.STROKE);
++        rim.setStrokeWidth(rimWidth);
++    }
++
++    /** Fades the focus look in or out. */
++    void animateTo(int target, long durationMs) {
++        if (animator != null) animator.cancel();
++        if (durationMs <= 0) {
++            level = target;
++            invalidateSelf();
++            return;
++        }
++        animator = ValueAnimator.ofInt(level, target);
++        animator.setDuration(durationMs);
++        animator.setInterpolator(new DecelerateInterpolator());
++        animator.addUpdateListener(a -> {
++            level = (Integer) a.getAnimatedValue();
++            invalidateSelf();
++        });
++        animator.start();
++    }
++
++    @Override
++    protected void onBoundsChange(Rect b) {
++        float w = b.width(), h = b.height();
++        fill.setShader(new LinearGradient(0, 0, 0, h, 0x1CFFFFFF, 0x0AFFFFFF, Shader.TileMode.CLAMP));
++        sheen.setShader(new LinearGradient(0, 0, w * 0.85f, h * 0.85f, 0x42FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
++        rim.setShader(new LinearGradient(0, 0, 0, h, 0x8CFFFFFF, 0x1FFFFFFF, Shader.TileMode.CLAMP));
++    }
++
++    @Override
++    public void draw(Canvas canvas) {
++        if (level <= 0) return;
++        Rect b = getBounds();
++        if (b.isEmpty()) return;
++        float r = 0.22f * b.width();   // AppAdapter.cornerRadius for square tiles
++        canvas.save();
++        canvas.translate(b.left, b.top);
++        rect.set(0, 0, b.width(), b.height());
++        fill.setAlpha(level);
++        sheen.setAlpha(level);
++        canvas.drawRoundRect(rect, r, r, fill);
++        canvas.drawRoundRect(rect, r, r, sheen);
++        rect.inset(rimWidth / 2f, rimWidth / 2f);
++        rim.setAlpha(level);
++        canvas.drawRoundRect(rect, r - rimWidth / 2f, r - rimWidth / 2f, rim);
++        canvas.restore();
++    }
++
++    @Override
++    public void setAlpha(int alpha) {
++        // The focus level is the only alpha this drawable has.
++    }
++
++    @Override
++    public void setColorFilter(ColorFilter colorFilter) {
++    }
++
++    @Override
++    public int getOpacity() {
++        return PixelFormat.TRANSLUCENT;
++    }
++}
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java b/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java
+index a5acd794..9ff2723a 100644
+--- a/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java
+@@ -190,6 +190,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+     private boolean lunar;
+     private int lunarOffset;
+     private TextView stats;
++    /** config.xml weather_provider: weather and air quality under the date, read from another app (no network here). */
++    private WeatherLine weatherLine;
+     private List<RaceWeekend.Race> raceCalendar;
+     private View racePanel;
+     private TextView raceKicker, raceHeadline, raceSessions;
+@@ -386,6 +388,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+     @Override
+     protected void onCreate(Bundle savedInstanceState) {
+         super.onCreate(savedInstanceState);
++        AppAdapter.squareTiles = getResources().getBoolean(R.bool.square_tiles);
++        AppAdapter.squareTileDp = getResources().getInteger(R.integer.square_tile_dp);
++        AppAdapter.squareTileAspect = getResources().getInteger(R.integer.square_tile_aspect);
+         setContentView(R.layout.activity_main);
+         density = getResources().getDisplayMetrics().density;
+         // config.xml, overlaid by config.json from a pushed theme (see Config and tools/theme.sh).
+@@ -436,6 +441,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+         sky.setIntensity(cfg.skyIntensity);
+         glass = findViewById(R.id.glass);
+         glass.setStyle(cfg.glassStyle);
++        // square_tiles: the focus look belongs to each card (LiftSheen, scale, lift, shadow); no overlay slides between them.
++        if (AppAdapter.squareTiles) glass.setVisibility(View.GONE);
+         if (festive) glass.setAccent(festival.accentColor());
+         ambient = findViewById(R.id.ambient);
+         // The glow is one bitmap, so its alpha can be applied while drawing it. Otherwise every frame of
+@@ -489,6 +496,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+         btnWifi = findViewById(R.id.btnWifi);
+         shamsiDate = findViewById(R.id.shamsiDate);
+         stats = findViewById(R.id.stats);
++        String weatherAuthority = getString(R.string.weather_provider);
++        if (!weatherAuthority.isEmpty()) {
++            weatherLine = new WeatherLine(this, weatherAuthority, findViewById(R.id.weatherBlock),
++                    findViewById(R.id.weatherLine1), findViewById(R.id.weatherLine2), handler);
++            frost(findViewById(R.id.weatherBlock));
++        }
++        // Frosted glass: the blurred wallpaper under each top button's own glass (a no-op while there is no wallpaper).
++        ViewGroup topBar = findViewById(R.id.topButtons);
++        for (int i = 0; i < topBar.getChildCount(); i++) frost(topBar.getChildAt(i));
+         raceCalendar = cfg.raceCalendar;
+         racePanel = findViewById(R.id.racePanel);
+         raceKicker = findViewById(R.id.raceKicker);
+@@ -608,6 +624,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+         int rowsBelowDock = cfg.rowsBelowDock;
+         grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+             int h = b - t;
++            // square_tile_dp: a narrow row of small tiles, centred. Each cell is the tile plus room for the focus zoom and
++            // a gap; the grid gets equal padding left and right so the cells (and so the row) sit in the middle.
++            if (AppAdapter.squareTiles && AppAdapter.squareTileDp > 0) {
++                int cell = Math.round((AppAdapter.squareTileDp * AppAdapter.SQUARE_FOCUS_SCALE + 16) * density);
++                int side = Math.max(0, ((r - l) - cell * COLUMNS) / 2);
++                if (grid.getPaddingLeft() != side || grid.getPaddingRight() != side) {
++                    grid.setPadding(side, grid.getPaddingTop(), side, grid.getPaddingBottom());
++                }
++            }
+             // Item height follows the tile size, which follows the columns and the rows that must fit (AppAdapter.tileWidthPx).
+             int inner = (r - l) - grid.getPaddingLeft() - grid.getPaddingRight();
+             int tileW = AppAdapter.tileWidthPx(inner, h, COLUMNS, rowsBelowDock, cfg.dockTitle, cfg.dockRow, density);
+@@ -940,6 +965,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+     @Override
+     protected void onResume() {
+         super.onResume();
++        resumedAtMs = SystemClock.uptimeMillis();
+         // A festival that started or ended while Home was in the background: rebuild with or without it.
+         if (festive != festival.active(LocalDate.now())) {
+             recreate();
+@@ -983,6 +1009,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+             pillsShown = true;
+         }
+         if (showStats) startStats();
++        if (weatherLine != null) weatherLine.start();
+         sky.update();
+         wallpaperPlayer.start();
+         handler.postDelayed(minuteTick, MINUTE_MS);
+@@ -1160,6 +1187,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+         heroArt.animate().cancel();
+         handler.removeCallbacks(minuteTick);
+         stopStats();
++        if (weatherLine != null) weatherLine.stop();
+         if (diya != null) diya.stop();
+         cancelPendingFocusScroll();
+         // Nothing of ours stays on screen over another app; an undecided prompt simply returns next time.
+@@ -1583,9 +1611,24 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+         });
+     }
+ 
++    /** When Home last came to the front: a Back right after that (leaving an app with a double press) is ignored. */
++    private long resumedAtMs;
++
+     @Override
+     public void onBackPressed() {
+-        // Home screen: Back goes nowhere.
++        // Home screen: Back goes nowhere, unless back_starts_screensaver (config.xml) says it starts the screensaver. Popups,
++        // the app library and reorder mode take Back before it gets here, so this is only the plain Home screen.
++        if (!getResources().getBoolean(R.bool.back_starts_screensaver)) return;
++        if (SystemClock.uptimeMillis() - resumedAtMs < 700) return;
++        // The screensaver chosen in the TV's settings, through the system's "start now" shortcut (as the remote-button
++        // action "screensaver" does); the launcher's own clock where the firmware has none.
++        Intent dream = new Intent(Intent.ACTION_MAIN)
++                .setClassName("com.android.systemui", "com.android.systemui.Somnambulator");
++        try {
++            startActivity(dream);
++        } catch (ActivityNotFoundException | SecurityException e) {
++            startActivity(new Intent(this, ClockActivity.class));
++        }
+     }
+ 
+     // ---- glass highlight -------------------------------------------------------------------------
+@@ -1637,12 +1680,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+         Rect r = tileRect;
+         r.set(0, 0, card.getWidth(), card.getHeight());
+         root.offsetDescendantRectToMyCoords(card, r);
+-        float pad = 6f * density;        // matches GlassView's glow inset
++        float pad = GlassView.insetPx(density);   // matches GlassView's glow (or lift shadow) inset
+         float scale = adapter.focusScale();
+         float w = card.getWidth() * scale + 2 * pad;
+         float h = card.getHeight() * scale + 2 * pad;
+         float x = r.exactCenterX() - w / 2f;
+-        float y = r.exactCenterY() - h / 2f - (advancedEffects ? 4f * density : 0f);
++        float y = r.exactCenterY() - h / 2f - (advancedEffects || AppAdapter.squareTiles ? 4f * density : 0f);
+ 
+         ViewGroup.LayoutParams lp = glass.getLayoutParams();
+         if (lp.width != (int) w || lp.height != (int) h || card.getWidth() != glassCardW) {
+@@ -1711,7 +1754,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+         RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
+         View card = vh == null ? null : vh.itemView.findViewById(R.id.card);
+         if (card == null || card.getWidth() <= 0 || !card.isFocused()) return;
+-        float pad = 6f * density;
++        float pad = GlassView.insetPx(density);
+         float scale = adapter.focusScale();
+         int w = (int) (card.getWidth() * scale + 2 * pad);
+         int h = (int) (card.getHeight() * scale + 2 * pad);
+@@ -2311,6 +2354,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
+         clockColumn.addView(column, clockColumn.indexOfChild(clockRow) + 1, lp);
+     }
+ 
++    /** Puts the blurred wallpaper (GlassBackdrop) under a pill or button's own background, as a full pill or circle. */
++    private static void frost(View view) {
++        Drawable own = view.getBackground();
++        if (own == null) return;
++        view.setBackground(new android.graphics.drawable.LayerDrawable(new Drawable[]{
++                new GlassBackdrop.BackdropDrawable(view, 0f, 0f), own}));
++    }
++
+     /** The first top-bar button after Inputs that is shown, in bar order (top_bar_apps, the network pill, ...); Settings is always there. */
+     private View firstTopButton() {
+         ViewGroup bar = findViewById(R.id.topButtons);
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/WallpaperPlayer.java b/launcher/app/src/main/java/com/gathin/tvhome/WallpaperPlayer.java
+index 8da8dfa6..a3a9ca6a 100644
+--- a/launcher/app/src/main/java/com/gathin/tvhome/WallpaperPlayer.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/WallpaperPlayer.java
+@@ -41,6 +41,8 @@ final class WallpaperPlayer {
+     private final ExecutorService decoder = Executors.newSingleThreadExecutor();
+     private final Random random = new Random();
+     private final int width;
++    /** The blurred copy of the picture decode() made last, published by show() when that picture goes on screen. */
++    private volatile Bitmap lastBlur;
+     /** config wallpaper_true_color: ARGB_8888 instead of RGB_565. */
+     private final Bitmap.Config bitmapConfig;
+     private final int height;
+@@ -261,6 +263,8 @@ final class WallpaperPlayer {
+ 
+     /** Puts a picture on screen and releases the previous one after a frame has drawn the new one. */
+     private void show(Bitmap bitmap) {
++        // The frosted-glass surfaces blur this picture's tiny copy (made in decode); no-op when there is none.
++        GlassBackdrop.publish(lastBlur);
+         Bitmap old = current;
+         current = bitmap;
+         // The wallpaper covers the whole root; avoid drawing the fallback colour under it.
+@@ -291,6 +295,8 @@ final class WallpaperPlayer {
+             Bitmap decoded = BitmapFactory.decodeFile(file.getPath(), options);
+             if (decoded == null) return null;
+             if (dimColor != 0) new Canvas(decoded).drawColor(dimColor);
++            // A 96 x 54 blurred copy for the frosted-glass tiles and pills, taken from the same (dimmed) picture.
++            lastBlur = GlassBackdrop.blur(decoded, this.width, this.height);
+             // One copy in GPU memory instead of a software bitmap plus its texture; the decode stays off the UI
+             // thread for rotations, and Home's return no longer uploads 4-8 MB to the GPU.
+             Bitmap gpu = decoded.copy(Bitmap.Config.HARDWARE, false);
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/WeatherLine.java b/launcher/app/src/main/java/com/gathin/tvhome/WeatherLine.java
+new file mode 100644
+index 00000000..83307480
+--- /dev/null
++++ b/launcher/app/src/main/java/com/gathin/tvhome/WeatherLine.java
+@@ -0,0 +1,149 @@
++package com.gathin.tvhome;
++
++import android.content.Context;
++import android.database.Cursor;
++import android.graphics.Color;
++import android.graphics.drawable.Drawable;
++import android.graphics.drawable.GradientDrawable;
++import android.net.Uri;
++import android.os.Handler;
++import android.os.HandlerThread;
++import android.view.View;
++import android.widget.TextView;
++
++/**
++ * Weather and air quality under the date, read from ANOTHER app's content provider (config.xml weather_provider).
++ * The launcher itself has no internet access and still has none: a separate app (with the INTERNET permission)
++ * fetches the data and publishes one row, and this class only reads that row, locally, while Home is on screen.
++ * Same lifecycle as the optional stats line: nothing runs while Home is paused, and with no provider set (the
++ * default) the views stay gone and nothing is read.
++ *
++ * The weather symbol and the air-quality dot are drawn as drawables, not font glyphs: a glyph from a fallback font
++ * sits at its own height and pulls the line off-centre, a drawable centres exactly.
++ */
++final class WeatherLine {
++    /** A local query is cheap; the provider decides when its data is stale and refetches. */
++    private static final long RECHECK_MS = 2 * 60 * 1000L;
++    /** The first query after a long pause may only trigger the provider's fetch: ask again shortly. */
++    private static final long SOON_MS = 7000L;
++    /** Older than this and the numbers would mislead: show nothing. */
++    private static final long TOO_OLD_MS = 6 * 60 * 60 * 1000L;
++
++    private final Context ctx;
++    private final Uri uri;
++    private final View block;
++    private final TextView line1, line2;
++    private final Handler ui;
++    private final float density;
++    private HandlerThread thread;
++    private volatile Handler bg;
++
++    WeatherLine(Context ctx, String authority, View block, TextView line1, TextView line2, Handler ui) {
++        this.ctx = ctx;
++        this.uri = Uri.parse("content://" + authority + "/now");
++        this.block = block;
++        this.line1 = line1;
++        this.line2 = line2;
++        this.ui = ui;
++        this.density = ctx.getResources().getDisplayMetrics().density;
++    }
++
++    void start() {
++        if (thread != null) return;
++        thread = new HandlerThread("weather");
++        thread.start();
++        // Each start has its own handler, held by its task, so stop() can clear the field at any moment.
++        Handler h = new Handler(thread.getLooper());
++        bg = h;
++        h.post(new Runnable() {
++            @Override
++            public void run() {
++                if (bg != h) return;
++                boolean got = readOnce(h);
++                if (bg == h) h.postDelayed(this, got ? RECHECK_MS : SOON_MS);
++            }
++        });
++    }
++
++    void stop() {
++        if (thread == null) return;
++        bg.removeCallbacksAndMessages(null);
++        thread.quit();
++        thread = null;
++        bg = null;
++        // The last answer stays on screen while an app is on top, like the stats line.
++    }
++
++    /** Runs off the main thread. True when a fresh enough row was shown. */
++    private boolean readOnce(Handler me) {
++        boolean got = false;
++        int temp = 0, aqi = -1;
++        String symbol = "";
++        try (Cursor c = ctx.getContentResolver().query(uri, null, null, null, null)) {
++            if (c != null && c.moveToFirst()) {
++                long updated = c.getLong(c.getColumnIndexOrThrow("updated"));
++                if (System.currentTimeMillis() - updated < TOO_OLD_MS) {
++                    temp = c.getInt(c.getColumnIndexOrThrow("temp"));
++                    aqi = c.getInt(c.getColumnIndexOrThrow("aqi"));
++                    symbol = c.getString(c.getColumnIndexOrThrow("symbol"));
++                    got = true;
++                }
++            }
++        } catch (RuntimeException e) {
++            // The feed app is not installed, not allowed to start, or answered something else: show nothing.
++        }
++        boolean show = got;
++        int t = temp, a = aqi;
++        String sym = symbol;
++        ui.post(() -> {
++            if (bg != me) return;
++            if (!show) {
++                block.setVisibility(View.GONE);
++                return;
++            }
++            block.setVisibility(View.VISIBLE);
++            line1.setText(t + "°");
++            line1.setCompoundDrawablesRelativeWithIntrinsicBounds(symbolDrawable(sym), null, null, null);
++            boolean air = a >= 0;
++            line2.setVisibility(air ? View.VISIBLE : View.GONE);
++            View divider = block.findViewById(R.id.weatherDivider);
++            if (divider != null) divider.setVisibility(air ? View.VISIBLE : View.GONE);
++            if (air) {
++                line2.setText("AQI " + a);
++                line2.setCompoundDrawablesRelativeWithIntrinsicBounds(dot(a), null, null, null);
++            }
++        });
++        return got;
++    }
++
++    /** The provider's one-character weather symbol as a white drawable (1 dp of padding is set in the layout). */
++    private Drawable symbolDrawable(String symbol) {
++        int res;
++        if ("☀".equals(symbol)) res = R.drawable.ic_weather_sun;
++        else if ("☾".equals(symbol)) res = R.drawable.ic_weather_moon;
++        else if ("❄".equals(symbol)) res = R.drawable.ic_weather_snow;
++        else if ("ϟ".equals(symbol)) res = R.drawable.ic_weather_bolt;
++        else if ("☂".equals(symbol)) res = R.drawable.ic_weather_rain;
++        else res = R.drawable.ic_weather_cloud;
++        return ctx.getDrawable(res);
++    }
++
++    /** A small dot in the US EPA colour of the band. */
++    private Drawable dot(int aqi) {
++        GradientDrawable d = new GradientDrawable();
++        d.setShape(GradientDrawable.OVAL);
++        d.setColor(bandColor(aqi));
++        int size = Math.round(7 * density);
++        d.setSize(size, size);
++        return d;
++    }
++
++    private static int bandColor(int aqi) {
++        if (aqi <= 50) return Color.parseColor("#3FD16B");
++        if (aqi <= 100) return Color.parseColor("#FFD60A");
++        if (aqi <= 150) return Color.parseColor("#FF9F0A");
++        if (aqi <= 200) return Color.parseColor("#FF453A");
++        if (aqi <= 300) return Color.parseColor("#BF5AF2");
++        return Color.parseColor("#C0394F");
++    }
++}
+diff --git a/launcher/app/src/main/res/drawable/banner_browsehere.xml b/launcher/app/src/main/res/drawable/banner_browsehere.xml
+new file mode 100644
+index 00000000..922940f0
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/banner_browsehere.xml
+@@ -0,0 +1,47 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Glass layers of the frosted card for browsehere (config.xml, app_banners), modelled on the owner's reference card. The blurred
++     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
++     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
++     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour, a hairline edge, and the logo a little
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#66000000" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#10FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#122F6BFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <stroke android:width="1.5dp" android:color="#22FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="58dp" android:height="58dp" android:top="37dp" android:gravity="top|center_horizontal"
++        android:drawable="@drawable/glyph_browsehere" />
++</layer-list>
+diff --git a/launcher/app/src/main/res/drawable/banner_googleplay.xml b/launcher/app/src/main/res/drawable/banner_googleplay.xml
+new file mode 100644
+index 00000000..fe9988c7
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/banner_googleplay.xml
+@@ -0,0 +1,47 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Glass layers of the frosted card for googleplay (config.xml, app_banners), modelled on the owner's reference card. The blurred
++     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
++     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
++     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour, a hairline edge, and the logo a little
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#66000000" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#10FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#122EC26A" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <stroke android:width="1.5dp" android:color="#22FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="54dp" android:height="54dp" android:top="39dp" android:gravity="top|center_horizontal"
++        android:drawable="@drawable/glyph_googleplay" />
++</layer-list>
+diff --git a/launcher/app/src/main/res/drawable/banner_stremio.xml b/launcher/app/src/main/res/drawable/banner_stremio.xml
+new file mode 100644
+index 00000000..ebab259d
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/banner_stremio.xml
+@@ -0,0 +1,47 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Glass layers of the frosted card for stremio (config.xml, app_banners), modelled on the owner's reference card. The blurred
++     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
++     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
++     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour, a hairline edge, and the logo a little
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#66000000" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#10FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#127B5BF5" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <stroke android:width="1.5dp" android:color="#22FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="58dp" android:height="58dp" android:top="37dp" android:gravity="top|center_horizontal"
++        android:drawable="@drawable/glyph_stremio" />
++</layer-list>
+diff --git a/launcher/app/src/main/res/drawable/banner_surfshark.xml b/launcher/app/src/main/res/drawable/banner_surfshark.xml
+new file mode 100644
+index 00000000..a38ef1dc
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/banner_surfshark.xml
+@@ -0,0 +1,47 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Glass layers of the frosted card for surfshark (config.xml, app_banners), modelled on the owner's reference card. The blurred
++     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
++     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
++     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour, a hairline edge, and the logo a little
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#66000000" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#10FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#1214B8C6" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <stroke android:width="1.5dp" android:color="#22FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="56dp" android:height="56dp" android:top="38dp" android:gravity="top|center_horizontal"
++        android:drawable="@drawable/glyph_surfshark" />
++</layer-list>
+diff --git a/launcher/app/src/main/res/drawable/banner_weather.xml b/launcher/app/src/main/res/drawable/banner_weather.xml
+new file mode 100644
+index 00000000..e1b6e079
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/banner_weather.xml
+@@ -0,0 +1,47 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Glass layers of the frosted card for weather (config.xml, app_banners), modelled on the owner's reference card. The blurred
++     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
++     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
++     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour, a hairline edge, and the logo a little
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#66000000" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#10FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#123C9BF0" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <stroke android:width="1.5dp" android:color="#22FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="62dp" android:height="62dp" android:top="35dp" android:gravity="top|center_horizontal"
++        android:drawable="@drawable/glyph_weather" />
++</layer-list>
+diff --git a/launcher/app/src/main/res/drawable/banner_youtube.xml b/launcher/app/src/main/res/drawable/banner_youtube.xml
+new file mode 100644
+index 00000000..f4e70999
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/banner_youtube.xml
+@@ -0,0 +1,47 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Glass layers of the frosted card for youtube (config.xml, app_banners), modelled on the owner's reference card. The blurred
++     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
++     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
++     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour, a hairline edge, and the logo a little
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#66000000" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#10FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <solid android:color="#12FF2D3B" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="180dp" android:height="162dp">
++        <shape android:shape="rectangle">
++            <stroke android:width="1.5dp" android:color="#22FFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item android:width="66dp" android:height="66dp" android:top="33dp" android:gravity="top|center_horizontal"
++        android:drawable="@drawable/glyph_youtube" />
++</layer-list>
+diff --git a/launcher/app/src/main/res/drawable/glass_panel.xml b/launcher/app/src/main/res/drawable/glass_panel.xml
+index f8224da1..e4cf7cc9 100644
+--- a/launcher/app/src/main/res/drawable/glass_panel.xml
++++ b/launcher/app/src/main/res/drawable/glass_panel.xml
+@@ -1,10 +1,18 @@
+ <?xml version="1.0" encoding="utf-8"?>
++<!-- Local change: the dropdowns and menus (Inputs, the library's options) as smoky translucent glass with a hairline edge,
++     like the Home cards, instead of the stock near-opaque dark panel (it was #F22A2A2E to #F5161618 with a 20 % rim). -->
+ <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+     <item>
+         <shape android:shape="rectangle">
+-            <gradient android:angle="270" android:startColor="#F22A2A2E" android:endColor="#F5161618" />
+-            <stroke android:width="1dp" android:color="#33FFFFFF" />
+-            <corners android:radius="20dp" />
++            <gradient android:angle="270" android:startColor="#D0242429" android:endColor="#D2141418" />
++            <corners android:radius="22dp" />
++        </shape>
++    </item>
++    <item>
++        <shape android:shape="rectangle">
++            <gradient android:angle="315" android:startColor="#18FFFFFF" android:endColor="#04FFFFFF" />
++            <stroke android:width="0.5dp" android:color="#26FFFFFF" />
++            <corners android:radius="22dp" />
+         </shape>
+     </item>
+ </layer-list>
+diff --git a/launcher/app/src/main/res/drawable/glass_panel_frost.xml b/launcher/app/src/main/res/drawable/glass_panel_frost.xml
+new file mode 100644
+index 00000000..6ee3c5d9
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/glass_panel_frost.xml
+@@ -0,0 +1,18 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- The glass of the app library's panel (and other popups), over the blurred wallpaper that GlassBackdrop paints underneath:
++     a smoky veil, a faint light from the top-left, a hairline edge. Same recipe as the Home cards. -->
++<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
++    <item>
++        <shape android:shape="rectangle">
++            <solid android:color="#73000000" />
++            <corners android:radius="28dp" />
++        </shape>
++    </item>
++    <item>
++        <shape android:shape="rectangle">
++            <gradient android:angle="315" android:startColor="#1CFFFFFF" android:endColor="#06FFFFFF" />
++            <stroke android:width="0.5dp" android:color="#24FFFFFF" />
++            <corners android:radius="28dp" />
++        </shape>
++    </item>
++</layer-list>
+diff --git a/launcher/app/src/main/res/drawable/glyph_browsehere.xml b/launcher/app/src/main/res/drawable/glyph_browsehere.xml
+new file mode 100644
+index 00000000..929a85da
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/glyph_browsehere.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M2.8,12 a9.2,9.2 0 1,0 18.4,0 a9.2,9.2 0 1,0 -18.4,0 M8.4,12 a3.6,9.2 0 1,0 7.2,0 a3.6,9.2 0 1,0 -7.2,0 M2.8,12 H21.2" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/glyph_googleplay.xml b/launcher/app/src/main/res/drawable/glyph_googleplay.xml
+new file mode 100644
+index 00000000..651917cb
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/glyph_googleplay.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M5.6,4.4 Q5.6,2.6 7.2,3.5 L20.3,10.7 Q22,12 20.3,13.3 L7.2,20.5 Q5.6,21.4 5.6,19.6 Z" android:fillColor="#FFFFFFFF"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/glyph_stremio.xml b/launcher/app/src/main/res/drawable/glyph_stremio.xml
+new file mode 100644
+index 00000000..9a181918
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/glyph_stremio.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M12 0a1.2 1.2 0 0 0-.85.354L.353 11.15c-.47.47-.47 1.227 0 1.697L11.15 23.647a1.2 1.2 0 0 0 1.7 0l10.797-10.8c.47-.47.47-1.226 0-1.696L12.85.354A1.2 1.2 0 0 0 12 0zm-1.674 7.586a.2.2 0 0 1 .002 0 .2.2 0 0 1 .129.04l5.729 4.214a.2.2 0 0 1 0 .323l-5.73 4.213a.2.2 0 0 1-.317-.16v-8.43a.2.2 0 0 1 .187-.2z" android:fillColor="#FFFFFFFF"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/glyph_surfshark.xml b/launcher/app/src/main/res/drawable/glyph_surfshark.xml
+new file mode 100644
+index 00000000..d672bdd1
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/glyph_surfshark.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M11.47 0C7.815.2 6.3 2.293 5.872 3.43c-1.615 4.866-3.127 14.325-3.33 15.662-.201 1.31-.228 2.119-.228 2.119 0 .328.026.705.102 1.059.454 1.286 1.792 2.37 4.768 1.287a192.353 192.353 0 0 0 9.533-4.44c1.387-.807 3.227-2.32 4.236-4.312.404-.807.682-1.716.733-2.65v-.452c-.026-2.295-.052-4.692-.204-7.013 0 0-.125-1.488-.2-2.017-.076-.53-.177-.733-.177-.733C20.626.906 19.693.38 18.71.126 18.23.026 17.7.024 17.095 0Zm4.692 4.44h.252c.277 0 .48.2.48.452V6.53c0 .252-.203.455-.48.455h-.252c-1.589 0-2.875 1.26-2.875 2.8v2.498c0 2.976-2.472 5.37-5.498 5.37h-.254c-.277 0-.478-.2-.478-.452v-1.64c0-.253.226-.454.478-.454h.254c1.589 0 2.875-1.262 2.875-2.8V9.81c0-2.977 2.472-5.373 5.498-5.373z" android:fillColor="#FFFFFFFF"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/glyph_weather.xml b/launcher/app/src/main/res/drawable/glyph_weather.xml
+new file mode 100644
+index 00000000..6f703c2d
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/glyph_weather.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M3.4,15.6 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M7,13 a5.6,5.6 0 1,0 11.2,0 a5.6,5.6 0 1,0 -11.2,0 M14.6,16.2 a3.7,3.7 0 1,0 7.4,0 a3.7,3.7 0 1,0 -7.4,0 M7.4,15.6 V19.6 H18.3 V16.2 H14.6 V15.6 z" android:fillColor="#FFFFFFFF"/>
++    <path android:pathData="M16.6,5.4 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/glyph_youtube.xml b/launcher/app/src/main/res/drawable/glyph_youtube.xml
+new file mode 100644
+index 00000000..fc892703
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/glyph_youtube.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" android:fillColor="#FFFFFFFF"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/ic_weather_bolt.xml b/launcher/app/src/main/res/drawable/ic_weather_bolt.xml
+new file mode 100644
+index 00000000..a04d0c64
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/ic_weather_bolt.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="18dp" android:height="18dp" android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#FFFFFFFF" android:pathData="M13.6,2.4 L5.6,13.4 H11 L9.6,21.6 L18.4,10 H12.8 Z"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/ic_weather_cloud.xml b/launcher/app/src/main/res/drawable/ic_weather_cloud.xml
+new file mode 100644
+index 00000000..9f85b54c
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/ic_weather_cloud.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="18dp" android:height="18dp" android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#FFFFFFFF" android:pathData="M2.6,15.4 a4.1,4.1 0 1,0 8.2,0 a4.1,4.1 0 1,0 -8.2,0 M6.6,12.4 a5.8,5.8 0 1,0 11.6,0 a5.8,5.8 0 1,0 -11.6,0 M14,15.8 a3.9,3.9 0 1,0 7.8,0 a3.9,3.9 0 1,0 -7.8,0 M6.7,15.4 V19.5 H17.9 V15.8 H14 V15.4 z"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/ic_weather_moon.xml b/launcher/app/src/main/res/drawable/ic_weather_moon.xml
+new file mode 100644
+index 00000000..76a553b8
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/ic_weather_moon.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="18dp" android:height="18dp" android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#FFFFFFFF" android:pathData="M20.4,14.6 A8.6,8.6 0 1 1 9.4,3.6 A6.9,6.9 0 0 0 20.4,14.6 Z"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/ic_weather_rain.xml b/launcher/app/src/main/res/drawable/ic_weather_rain.xml
+new file mode 100644
+index 00000000..f7bb729d
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/ic_weather_rain.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="18dp" android:height="18dp" android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#FFFFFFFF" android:pathData="M3.4,10.4 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0 M7,8.2 a4.8,4.8 0 1,0 9.6,0 a4.8,4.8 0 1,0 -9.6,0 M13,10.8 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 M6.8,10.4 V13.9 H16.3 V10.8 H13 V10.4 z"/>
++    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.9" android:strokeLineCap="round" android:pathData="M8,17.4 L7,20.8 M12.4,17.4 L11.4,20.8 M16.8,17.4 L15.8,20.8"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/ic_weather_snow.xml b/launcher/app/src/main/res/drawable/ic_weather_snow.xml
+new file mode 100644
+index 00000000..f9ecd1f3
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/ic_weather_snow.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="18dp" android:height="18dp" android:viewportWidth="24" android:viewportHeight="24">
++    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.9" android:strokeLineCap="round" android:pathData="M12,2.8 V21.2 M4,7.4 L20,16.6 M4,16.6 L20,7.4"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/ic_weather_sun.xml b/launcher/app/src/main/res/drawable/ic_weather_sun.xml
+new file mode 100644
+index 00000000..d2cf302c
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/ic_weather_sun.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Weather symbols for the weather pill (WeatherLine): white, drawn on a 24 box, so they centre exactly. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="18dp" android:height="18dp" android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#FFFFFFFF" android:pathData="M7.6,12 a4.4,4.4 0 1,0 8.8,0 a4.4,4.4 0 1,0 -8.8,0"/>
++    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.9" android:strokeLineCap="round" android:pathData="M12,2.4 V4.6 M12,19.4 V21.6 M2.4,12 H4.6 M19.4,12 H21.6 M5.2,5.2 L6.8,6.8 M17.2,17.2 L18.8,18.8 M5.2,18.8 L6.8,17.2 M17.2,6.8 L18.8,5.2"/>
++</vector>
+diff --git a/launcher/app/src/main/res/drawable/pill_bg.xml b/launcher/app/src/main/res/drawable/pill_bg.xml
+index cb93ccad..7a699d65 100644
+--- a/launcher/app/src/main/res/drawable/pill_bg.xml
++++ b/launcher/app/src/main/res/drawable/pill_bg.xml
+@@ -3,7 +3,7 @@
+     <item android:state_focused="true">
+         <shape android:shape="rectangle">
+             <solid android:color="#F5FFFFFF" />
+-            <corners android:radius="21dp" />
++            <corners android:radius="19dp" />
+         </shape>
+     </item>
+     <!-- Reorder button while reorder mode is on (focus is on the tiles then). -->
+@@ -11,14 +11,26 @@
+         <shape android:shape="rectangle">
+             <solid android:color="#596EC1FF" />
+             <stroke android:width="1.5dp" android:color="#FF6EC1FF" />
+-            <corners android:radius="21dp" />
++            <corners android:radius="19dp" />
+         </shape>
+     </item>
+     <item>
+-        <shape android:shape="rectangle">
+-            <gradient android:angle="270" android:startColor="#2EFFFFFF" android:endColor="#14FFFFFF" />
+-            <stroke android:width="1dp" android:color="#38FFFFFF" />
+-            <corners android:radius="21dp" />
+-        </shape>
++        <!-- Local change: flat, light glass over the blurred wallpaper, a hairline rim (it was a gradient with a 22 % rim). A
++             faint dark veil keeps the white icons readable on a bright photo without turning the buttons grey. -->
++        <layer-list>
++            <item>
++                <shape android:shape="rectangle">
++                    <solid android:color="#33000000" />
++                    <corners android:radius="19dp" />
++                </shape>
++            </item>
++            <item>
++                <shape android:shape="rectangle">
++                    <solid android:color="#0FFFFFFF" />
++                    <stroke android:width="0.5dp" android:color="#1AFFFFFF" />
++                    <corners android:radius="19dp" />
++                </shape>
++            </item>
++        </layer-list>
+     </item>
+ </selector>
+diff --git a/launcher/app/src/main/res/drawable/pill_glass.xml b/launcher/app/src/main/res/drawable/pill_glass.xml
+new file mode 100644
+index 00000000..15816a85
+--- /dev/null
++++ b/launcher/app/src/main/res/drawable/pill_glass.xml
+@@ -0,0 +1,18 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- The weather and air quality pill under the date: smoky glass over the blurred wallpaper (GlassBackdrop paints the blur
++     underneath), like the cards: a dark veil, a faint light, a hairline edge. Flat. -->
++<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
++    <item>
++        <shape android:shape="rectangle">
++            <solid android:color="#59000000" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++    <item>
++        <shape android:shape="rectangle">
++            <gradient android:angle="315" android:startColor="#1CFFFFFF" android:endColor="#08FFFFFF" />
++            <stroke android:width="0.5dp" android:color="#1FFFFFFF" />
++            <corners android:radius="40dp" />
++        </shape>
++    </item>
++</layer-list>
+diff --git a/launcher/app/src/main/res/layout/activity_main.xml b/launcher/app/src/main/res/layout/activity_main.xml
+index c037d247..ed472ba1 100644
+--- a/launcher/app/src/main/res/layout/activity_main.xml
++++ b/launcher/app/src/main/res/layout/activity_main.xml
+@@ -182,7 +182,7 @@
+                     android:layout_height="wrap_content"
+                     android:singleLine="true"
+                     android:ellipsize="end"
+-                    android:layout_marginStart="4dp"
++                    android:layout_marginStart="0dp"
+                     android:textColor="#8CFFFFFF"
+                     android:textSize="12sp"
+                     android:fontFamily="@string/font_medium"
+@@ -202,7 +202,7 @@
+                         android:format12Hour="h:mm"
+                         android:format24Hour="HH:mm"
+                         android:textColor="#FFFFFFFF"
+-                        android:textSize="52sp"
++                        android:textSize="72sp"
+                         android:fontFamily="@string/font_light"
+                         android:letterSpacing="-0.04"
+                         android:includeFontPadding="false" />
+@@ -267,7 +267,7 @@
+                             android:format12Hour="@string/date_format_home"
+                             android:format24Hour="@string/date_format_home"
+                             android:textColor="#A6FFFFFF"
+-                            android:textSize="14sp"
++                            android:textSize="12.5sp"
+                             android:fontFamily="@string/font_regular"
+                             android:letterSpacing="0.14"
+                             android:textAllCaps="true" />
+@@ -311,13 +311,72 @@
+                 android:focusable="false"
+                 android:visibility="gone" />
+ 
++            <!-- Weather and air quality under the date (config.xml weather_provider); gone, and nothing read, while
++                 that is empty. Read from another app's content provider: this launcher has no internet access. -->
++            <LinearLayout
++                android:id="@+id/weatherBlock"
++                android:layout_width="wrap_content"
++                android:layout_height="wrap_content"
++                android:layout_below="@id/leftBlock"
++                android:layout_alignStart="@id/leftBlock"
++                android:layout_marginStart="0dp"
++                android:layout_marginTop="14dp"
++                android:orientation="horizontal"
++                android:gravity="center_vertical"
++                android:background="@drawable/pill_glass"
++                android:paddingStart="14dp"
++                android:paddingEnd="16dp"
++                android:paddingTop="6dp"
++                android:paddingBottom="6dp"
++                android:focusable="false"
++                android:visibility="gone">
++
++                <TextView
++                    android:id="@+id/weatherLine1"
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:layout_gravity="center_vertical"
++                    android:gravity="center_vertical"
++                    android:singleLine="true"
++                    android:drawablePadding="7dp"
++                    android:textColor="#FFFFFFFF"
++                    android:textSize="16sp"
++                    android:fontFamily="@string/font_medium"
++                    android:includeFontPadding="false"
++                    android:focusable="false" />
++
++                <View
++                    android:id="@+id/weatherDivider"
++                    android:layout_width="1dp"
++                    android:layout_height="14dp"
++                    android:layout_gravity="center_vertical"
++                    android:layout_marginStart="12dp"
++                    android:layout_marginEnd="12dp"
++                    android:background="#2EFFFFFF" />
++
++                <TextView
++                    android:id="@+id/weatherLine2"
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:layout_gravity="center_vertical"
++                    android:gravity="center_vertical"
++                    android:singleLine="true"
++                    android:drawablePadding="7dp"
++                    android:textColor="#F2FFFFFF"
++                    android:textSize="13sp"
++                    android:fontFamily="@string/font_medium"
++                    android:letterSpacing="0.04"
++                    android:includeFontPadding="false"
++                    android:focusable="false" />
++            </LinearLayout>
++
+             <LinearLayout
+                 android:id="@+id/topButtons"
+                 android:layout_width="wrap_content"
+                 android:layout_height="wrap_content"
+                 android:layout_alignParentEnd="true"
+-                android:layout_alignBottom="@id/leftBlock"
+-                android:layout_marginBottom="6dp"
++                android:layout_alignTop="@id/leftBlock"
++                android:layout_marginTop="22dp"
+                 android:clipChildren="false"
+                 android:clipToPadding="false"
+                 android:orientation="horizontal">
+diff --git a/launcher/app/src/main/res/values/config.xml b/launcher/app/src/main/res/values/config.xml
+index a9987423..512b4c06 100644
+--- a/launcher/app/src/main/res/values/config.xml
++++ b/launcher/app/src/main/res/values/config.xml
+@@ -17,10 +17,12 @@
+ 
+     <!-- Apps pinned to the dock row at the bottom, in this order. Missing apps are skipped. -->
+     <string-array name="dock_apps">
+-        <item>com.netflix.ninja</item>
+-        <item>com.amazon.amazonvideo.livingroom</item>
+         <item>com.google.android.youtube.tv</item>
+-        <item>in.startv.hotstar</item>
++        <item>com.stremio.one</item>
++        <item>com.tcl.browser</item>
++        <item>com.surfshark.vpnclient.android</item>
++        <item>com.android.vending</item>
++        <item>io.github.sumyabazar1.weather</item>
+     </string-array>
+     <!-- With fewer dock_apps than columns (or a dock app that is not installed), the free dock slots take
+          the first grid apps, so the dock never shows a gap. false leaves them empty (#162); a theme can
+@@ -29,12 +31,24 @@
+ 
+     <!-- Apps never shown as tiles (e.g. the Live TV app, which the Inputs menu already covers). -->
+     <string-array name="hidden_apps">
+-        <item>com.mediatek.wwtv.tvcenter</item>
+-        <item>com.mitv.gallery</item>
++        <item>com.tcl.tv</item>
++        <item>com.tcl.suspension</item>
++        <item>com.tcl.settings</item>
++        <item>com.tcl.t_solo</item>
++        <item>com.alphainventor.filemanager</item>
++        <item>com.amazon.amazonvideo.livingroom</item>
++        <item>com.google.android.play.games</item>
++        <item>com.google.android.videos</item>
++        <item>com.google.android.youtube.tvmusic</item>
++        <item>com.netflix.ninja</item>
++        <item>com.yablio.sendfilestotv</item>
++        <item>com.gathin.photodream</item>
++        <item>flar2.homebutton</item>
++        <item>org.videolan.vlc</item>
+     </string-array>
+ 
+     <!-- The TV's Live TV / tuner app, offered at the end of the Inputs menu. Leave empty to omit. -->
+-    <string name="live_tv_package" translatable="false">com.mediatek.wwtv.tvcenter</string>
++    <string name="live_tv_package" translatable="false">com.tcl.tv</string>
+ 
+     <!-- Open the Live TV app above the first time Home comes up after the TV is switched on, for sets that are
+          mostly used for broadcast TV. Once per boot: Home after that stays Home. Can also be set with
+@@ -73,6 +87,12 @@
+     <!-- A tile's artwork instead of the app's banner: "package=drawable", a banner_* drawable bundled with the
+          launcher (res/drawable). banner_tv is a magenta field with the Live TV glyph. -->
+     <string-array name="app_banners">
++        <item>com.google.android.youtube.tv=banner_youtube</item>
++        <item>com.stremio.one=banner_stremio</item>
++        <item>com.tcl.browser=banner_browsehere</item>
++        <item>com.surfshark.vpnclient.android=banner_surfshark</item>
++        <item>com.android.vending=banner_googleplay</item>
++        <item>io.github.sumyabazar1.weather=banner_weather</item>
+     </string-array>
+ 
+     <!-- TVs with no TvInputManager have no HDMI list to read, but their own source-selection panel
+@@ -119,7 +139,7 @@
+          that applies a volume key before the filter and again when the helper hands it back, so one tap moves two
+          steps (TCL G03 / BeyondTV4 on Android 11, #1100); a swallowed key gets no auto-repeat from Android, hence
+          the helper's own. Leave it off where a tap is one step. A theme can set it ("consume_volume_keys"). -->
+-    <bool name="consume_volume_keys">false</bool>
++    <bool name="consume_volume_keys">true</bool>
+ 
+     <!-- Vendor source numbers for the Inputs menu, "HW<n>=<number>" by the framework input id's last part
+          (`tools/tv.py 'dumpsys tv_input'` lists them). A mapped input opens by sending input_action with the
+@@ -146,6 +166,7 @@
+          a temporary `Log.d` in the helper's `onKeyEvent`: `getKeyCode()`, `getScanCode()`, `getDeviceId()`, read
+          after a HOME_KEY_SERVICE=1 rebuild. Leave empty to omit. -->
+     <integer-array name="settings_key_keycodes">
++        <item>4077</item>
+     </integer-array>
+     <!-- What those Settings buttons open: false, the TV's Settings; true, a small glass panel at the top right
+          with TV settings, Display, Network, Apps (re-enable an app) and Launcher settings, over whatever is on screen.
+@@ -197,6 +218,10 @@
+          where the firmware hands KEYCODE_GUIDE (172) to the stock launcher and no app ever receives it. Leave empty
+          to omit. -->
+     <string-array name="app_keys" translatable="false">
++        <item>4062:com.stremio.one</item>
++        <item>4057:com.stremio.one</item>
++        <item>4065:com.google.android.youtube.tv</item>
++        <item>4099:com.stremio.one</item>
+     </string-array>
+ 
+     <!-- Package of the stock launcher, for TVs whose firmware turns it back on after it was disabled. XGIMI's
+@@ -233,7 +258,7 @@
+     <bool name="lunar_date">false</bool>
+     <!-- The date (with the Shamsi and lunar lines) on its own line under the clock instead of beside it, for a top bar
+          whose pills leave the date too little room. Can also be set with "date_below_clock" in a theme. -->
+-    <bool name="date_below_clock">false</bool>
++    <bool name="date_below_clock">true</bool>
+     <!-- The language the launcher shows itself in, as a language tag ("vi", "pt-BR"), instead of the TV's. For firmware
+          that has no menu entry for the owner's language although the launcher is translated into it (a China-market
+          Xiaomi offers Chinese and English only). Empty, the default, follows the TV. A theme can set it ("locale"). -->
+@@ -273,7 +298,7 @@
+          also be set with "dock_glass": true in a theme's config.json. -->
+     <bool name="dock_glass">false</bool>
+     <!-- Draw the dock band and its edge. false leaves the tiles floating on the wallpaper (config.xml dock_band). -->
+-    <bool name="dock_band">true</bool>
++    <bool name="dock_band">false</bool>
+     <!-- Every app in one row: the dock apps first, the rest after them, and the row scrolls sideways when focus
+          reaches its edge. No grid below; rows_below_dock is ignored. Needs dock_row. Can also be set with
+          "single_row" in a theme. -->
+@@ -290,9 +315,9 @@
+     <bool name="reorder_button">false</bool>
+     <!-- Wi-Fi and Settings as round icon-only buttons (the network name moves to the talkback description);
+          Inputs keeps its label. -->
+-    <bool name="icon_only_buttons">false</bool>
++    <bool name="icon_only_buttons">true</bool>
+     <!-- The Inputs pill as a round icon button too (the label moves to the talkback description). -->
+-    <bool name="icon_only_inputs">false</bool>
++    <bool name="icon_only_inputs">true</bool>
+     <!-- true colours the Wi-Fi pill's icon green while the TV is online and leaves it white while it is not (dark on
+          the focused pill either way), so the connection shows at a glance, also as an icon-only button. Can also be
+          set with "wifi_status_color": true in a theme's config.json. -->
+@@ -302,11 +327,11 @@
+          of white for both. Can also be set with "wifi_status_warnings": true in a theme's config.json. -->
+     <bool name="wifi_status_warnings">false</bool>
+     <!-- The app library as a round button in the top bar, beside Settings (app_library must be on too). -->
+-    <bool name="library_button">false</bool>
++    <bool name="library_button">true</bool>
+     <!-- The App library pill after the last Home row. false hides it while library_button is on, so the top-bar
+          button stays the way in, and Down from the last row stays put as with app_library off. Can also be set
+          with "show_library_pill": false in a theme's config.json. -->
+-    <bool name="show_library_pill">true</bool>
++    <bool name="show_library_pill">false</bool>
+     <!-- With icon_only_buttons: keep the network name on the Wi-Fi pill up to this width in dp, cut with an ellipsis.
+          0 leaves the Wi-Fi pill as an icon. -->
+     <integer name="wifi_label_width">0</integer>
+@@ -349,11 +374,11 @@
+ 
+     <!-- The focused dock app's name in large type above the dock. false keeps only the glow, which leaves room
+          for bigger tiles when rows_below_dock is 2 or 3. -->
+-    <bool name="dock_title">true</bool>
++    <bool name="dock_title">false</bool>
+ 
+     <!-- Tiles per row in the grid; the dock always has this many slots. Tiles are 180dp wide at 4 columns and
+          shrink to fit from 5 up (about 144dp at 5, 117dp at 6 on a 1080p TV). -->
+-    <integer name="columns">4</integer>
++    <integer name="columns">6</integer>
+ 
+     <!-- Basic motion is on; advanced effects are opt-in in the launcher's own Settings screen. -->
+     <bool name="animations">true</bool>
+@@ -363,8 +388,28 @@
+          Off by default because the chooser is also available from launcher settings. -->
+     <bool name="show_home_settings_shortcut">false</bool>
+ 
++    <!-- Back on the plain Home screen starts the TV's screensaver (the one chosen in its settings; the launcher's clock where
++         there is none). Off by default, where Back does nothing on Home. Back is ignored for 0.7 s after Home appears, so
++         leaving an app with a double press does not start it. Local change for this TV. -->
++    <bool name="back_starts_screensaver">true</bool>
++
++    <!-- Square tiles (as tall as wide, rounded like a tvOS tile) instead of 16:9 cards. Off by default.
++         Local change for this TV; config.xml only (not settable from a theme). -->
++    <bool name="square_tiles">true</bool>
++    <!-- With square_tiles: the tile's edge in dp, and the row is centred on the screen (the cell around each tile adds room
++         for the focus zoom). 0 lets the tiles fill the width as the columns allow. Local change for this TV. -->
++    <integer name="square_tile_dp">86</integer>
++    <!-- With square_tiles: the tile's height as a percentage of its width (100 = square). The banner drawables are drawn
++         180 x 162 dp, which is 90. Local change for this TV. -->
++    <integer name="square_tile_aspect">90</integer>
++    <!-- Authority of ANOTHER app's content provider that publishes a one-row weather answer (temp, high, low,
++         condition, symbol, aqi, aqi_label, place, updated) at content://<authority>/now. It is shown under the date.
++         The launcher keeps no internet access: it only reads that row, locally, while Home is on screen. Empty
++         (the default) hides the line and reads nothing. Local change for this TV (the feed app is tcl-tv-kit/weather-feed). -->
++    <string name="weather_provider" translatable="false">local.tvweather</string>
++
+     <!-- Installed launchable apps, including ordinary Android apps. Also settable in config.json. -->
+-    <bool name="app_library">false</bool>
++    <bool name="app_library">true</bool>
+     <!-- Every app tile is its icon on a card tinted from that icon, name only under the focused tile,
+          instead of each app's own banner. Off by default; a theme can set "uniform_tiles": true. -->
+     <bool name="uniform_tiles">false</bool>
+@@ -374,7 +419,7 @@
+     <!-- OK opens every app in the library, not only the apps on Home: for a library that holds the apps a theme
+          keeps off Home with hidden_apps. Hold OK still offers Add to Home. app_library_selection wins when both are
+          on. Off by default; a theme can set "library_ok_opens": true (also needs app_library). -->
+-    <bool name="library_ok_opens">false</bool>
++    <bool name="library_ok_opens">true</bool>
+ 
+     <!-- Apps pre-seeded into the App library's "added" set at startup (config.xml library_apps, or a theme's
+          config.json). They show on Home as if the owner had added them in the App library UI, and stay
+@@ -467,5 +512,5 @@
+     <!-- The focus highlight's look: glass (the default: a translucent slab with a bright top sheen, a crisp rim and a
+          faint outer glow), rim (the crisp rim alone, no sheen, fill or glow, for a quiet focus over a wallpaper) or
+          halo (the rim with a lighter outer glow). Can also be set with "glass_style": "rim" in a theme's config.json. -->
+-    <string name="glass_style" translatable="false">glass</string>
++    <string name="glass_style" translatable="false">lift</string>
+ </resources>
+diff --git a/launcher/app/src/main/res/values/styles.xml b/launcher/app/src/main/res/values/styles.xml
+index 25089128..8b5997c5 100644
+--- a/launcher/app/src/main/res/values/styles.xml
++++ b/launcher/app/src/main/res/values/styles.xml
+@@ -9,7 +9,7 @@
+     <!-- Frosted pill, tvOS style. -->
+     <style name="TopButtonBase">
+         <item name="android:layout_width">wrap_content</item>
+-        <item name="android:layout_height">42dp</item>
++        <item name="android:layout_height">38dp</item>
+         <item name="android:layout_marginStart">10dp</item>
+         <item name="android:paddingStart">16dp</item>
+         <item name="android:paddingEnd">20dp</item>
+@@ -29,9 +29,9 @@
+     <!-- Icon-only pill: a 42dp circle (pill_bg's 21dp corners) with the 22dp icon centred by even padding. Give it a
+          contentDescription, since there is no text. -->
+     <style name="TopButtonIcon" parent="TopButtonBase">
+-        <item name="android:layout_width">42dp</item>
+-        <item name="android:paddingStart">10dp</item>
+-        <item name="android:paddingEnd">10dp</item>
++        <item name="android:layout_width">38dp</item>
++        <item name="android:paddingStart">8dp</item>
++        <item name="android:paddingEnd">8dp</item>
+         <item name="android:drawablePadding">0dp</item>
+     </style>
+ 

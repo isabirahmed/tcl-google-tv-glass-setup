@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The only permission: Open-Meteo (weather and air quality). The launcher itself keeps NO internet access:
+         it only reads the small answer this app publishes below. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:label="TV Weather Feed"
+        android:supportsRtl="false">
+
+        <!-- Read-only, no write path. Anything that can see this app can read one row: temperature, condition, air
+             quality index and the place name. Nothing about the owner or the TV. -->
+        <provider
+            android:name=".WeatherProvider"
+            android:authorities="local.tvweather"
+            android:exported="true" />
+    </application>
+</manifest>

@@ -1,0 +1,4 @@
+# batch 7 - Google TV ambient mode screensaver; replaced by the launcher's clock (screensaver_components = com.gathin.tvhome/.ClockDream)
+# Undo: tools/restore.sh work/batch7-dreamx.txt com.google.android.apps.tv.launcherx  AND
+#       tools/tv.py 'settings put secure screensaver_components com.google.android.apps.tv.dreamx/.service.Backdrop'
+com.google.android.apps.tv.dreamx

@@ -1,0 +1,3 @@
+# batch 5 - first-run wizard; its RecoveryActivity claims HOME once the stock launcher is off. Done BEFORE the launcher install.
+# Re-enable before a factory reset (restore.sh does it).
+com.google.android.tungsten.setupwraith

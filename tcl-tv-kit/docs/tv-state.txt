@@ -1,0 +1,76 @@
+# TV-side state of this setup (read from the TV after the final reboot)
+model: Smart TV Pro / product G05_4K_GB / Android 11 / build TCL/G05_4K_GB/G05:11/AR2101/AR25:user/release-keys
+
+## settings
+global private_dns_mode=hostname
+global private_dns_specifier=dns.adguard-dns.com
+secure screensaver_components=com.gathin.photodream/.PhotoDream
+secure screensaver_enabled=1
+secure screensaver_activate_on_sleep=1
+secure enabled_accessibility_services=com.spocky.projengmenu/.services.ProjectivyAccessibilityService:flar2.homebutton/a.i:com.gathin.tvhome/.HomeKeyService
+secure accessibility_enabled=1
+system screen_off_timeout=600000
+home activity=com.gathin.tvhome/.MainActivity
+
+## app-ops (TCL needs these for apps that start without being opened)
+local.tvweather: APP_AUTO_START: allow
+com.gathin.photodream: APP_AUTO_START: allow
+com.gathin.tvhome: APP_AUTO_START: allow
+
+## launcher config on the TV (theme overlay)
+{
+  "wallpaper": true,
+  "wallpaper_rotation_minutes": 60,
+  "wallpaper_order": "shuffle",
+  "wallpaper_dim": 22,
+  "ambient_glow": false
+}
+
+## wallpapers on the TV
+01-georgia.jpg  06-dubai.jpg     11-jordan.jpg      16-srilanka.jpg
+02-georgia.jpg  07-maldives.jpg  12-jordan.jpg      17-srilanka.jpg
+03-georgia.jpg  08-maldives.jpg  13-azerbaijan.jpg  18-srilanka.jpg
+04-dubai.jpg    09-maldives.jpg  14-azerbaijan.jpg
+05-dubai.jpg    10-jordan.jpg    15-azerbaijan.jpg
+
+## screensaver pictures on the TV: 22 files, 20 s each
+
+## disabled packages (pm list packages -d)
+air.jp.co.fujitv.fodviewer.tv
+android.autoinstalls.config.google.gtvpai
+au.com.stan.and
+com.apple.atve.androidtv.appletv
+com.google.android.apps.tv.dreamx
+com.google.android.apps.tv.launcherx
+com.google.android.feedback
+com.google.android.marvin.talkback
+com.google.android.onetimeinitializer
+com.google.android.partnersetup
+com.google.android.syncadapters.calendar
+com.google.android.tungsten.setupwraith
+com.parsifal.starz
+com.spocky.projengmenu
+com.tcl.MultiScreenInteraction_TV
+com.tcl.channelplus
+com.tcl.dashboard
+com.tcl.esticker
+com.tcl.gallery
+com.tcl.guard
+com.tcl.hearaid
+com.tcl.logkit
+com.tcl.messagebox
+com.tcl.notereminder
+com.tcl.ocean.instructions
+com.tcl.partnercustomizer
+com.tcl.smartalexa
+com.tcl.ttvs
+com.tcl.tv.tclhome_passive
+com.tcl.ui_mediaCenter
+com.tcl.useragreement
+com.tcl.usercenter
+com.tcl.waterfall.overseas
+in.startv.hotstar
+jp.happyon.android
+jp.unext.tv.player
+tv.abema
+tv.wuaki.apptv

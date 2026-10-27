@@ -1,0 +1,4 @@
+# batch 4 - streaming apps the owner does not use
+in.startv.hotstar                      # Hotstar
+com.parsifal.starz                     # Starz
+com.apple.atve.androidtv.appletv       # Apple TV app

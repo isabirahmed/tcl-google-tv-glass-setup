@@ -1,0 +1,17 @@
+# Created by bootstrap.sh or your own builds: never commit these
+/cleanyourtv/
+/android-sdk/
+/backup/
+*.apk
+local.properties
+.gradle/
+build/
+.DS_Store
+*.pyc
+tools/venv/
+
+# Your own data: backups, keys and anything that identifies your TV or network
+*.plbackup
+adbkey
+adbkey.pub
+recovery-*.json

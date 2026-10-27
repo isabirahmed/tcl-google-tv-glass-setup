@@ -1,0 +1,7 @@
+Deliberately left enabled (owner's choice or load-bearing):
+ voice: com.google.android.katniss, com.google.android.tv.assistant, com.tcl.assistant
+ casting: com.google.android.apps.mediashell (Chromecast), com.tcl.miracast, com.tcl.airplay2, com.mediatek.AirplayAPK
+ remote/inputs: com.tcl.tv, com.tcl.tvinput, com.tcl.suspension, com.tcl.eva, com.tcl.keyhelp, com.tcl.autopair,
+   com.tcl.tcl_bt_rcu_service, com.tcl.UpdatePeripheral (remote firmware), com.tcl.initsetup, com.tcl.factory.view (never launch)
+ apps: Netflix, YouTube, Prime Video, Stremio, VLC, Surfshark, file managers, YouTube Music, Play Games, Google TV store
+ other: com.tcl.gamebar, com.tcl.t_solo, com.tcl.micmanager, com.tcl.common.shortcutmenu, Button Mapper (flar2.homebutton)

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Edit these three, rebuild, reinstall. Dubai (a placeholder: Dubai city centre; look yours up with Open-Meteo's geocoding API or any map). -->
+    <string name="place" translatable="false">Dubai</string>
+    <string name="latitude" translatable="false">25.2048</string>
+    <string name="longitude" translatable="false">55.2708</string>
+</resources>

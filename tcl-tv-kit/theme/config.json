@@ -1,0 +1,7 @@
+{
+  "wallpaper": true,
+  "wallpaper_rotation_minutes": 5,
+  "wallpaper_order": "shuffle",
+  "wallpaper_dim": 22,
+  "ambient_glow": false
+}

@@ -1,0 +1,12 @@
+# batch 2 - TCL content, ads and promos
+com.tcl.waterfall.overseas             # TCL content recommendations
+com.tcl.partnercustomizer              # TCL rows on the Google TV home
+com.tcl.messagebox                     # pushed messages and promos
+com.tcl.usercenter                     # TCL account (the firmware may re-enable it at boot)
+com.tcl.dashboard                      # "TCL Home" panel, gift box and promos
+com.tcl.tv.tclhome_passive             # pushes TCL content at boot
+com.tcl.esticker                       # retail demo stickers
+com.tcl.channelplus                    # TCL free ad-supported channels
+com.tcl.useragreement                  # agreement screen shown during setup
+android.autoinstalls.config.google.gtvpai  # partner app auto-installer
+# com.tcl.browser                      # KEPT: it is the "BrowseHere" app on the owner's home row
