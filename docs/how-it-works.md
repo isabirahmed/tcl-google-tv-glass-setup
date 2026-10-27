@@ -32,7 +32,8 @@ Android 11 has no live backdrop blur, and blurring the whole screen every frame 
    through a small saturation boost (1.35) because glass looks richer than what is behind it.
 2. Each glass surface (card, weather pill, top-bar button, library panel) gets a `BackdropDrawable` as the bottom layer of its background. It paints the **slice of that blurred bitmap that
    lies behind the view**, using the view's on-screen position (not its window position, which matters for popups), and repaints when the view moves or the wallpaper changes.
-3. The surface's own glass goes on top: a smoky veil, a faint diagonal light, a flat whisper of the app's colour, and a hairline edge.
+3. The surface's own glass goes on top: a smoky veil, a faint diagonal light and a flat whisper of the app's colour. There is deliberately **no outline** on the cards, the top buttons or the weather pill;
+   the only edge is the light rim the focused card fades in (below), and the blue ring of reorder mode.
 
 Cost: a few milliseconds per wallpaper change and an 80 KB bitmap. With no wallpaper there is no blurred copy and the surfaces keep plain glass. This deliberately breaks upstream's "no blur"
 rule; it is the main reason this is a patch and not a pull request.
@@ -63,6 +64,20 @@ clock where the firmware has none. Back is ignored for 0.7 s after Home appears,
 
 `dock_apps`, `hidden_apps`, `app_banners`, `app_keys` (one TCL remote's coloured buttons), `settings_key_keycodes`, `consume_volume_keys` (with the key helper bound, this TV's volume keys step twice per press
 unless the helper consumes them), `date_below_clock`, `library_button`, `icon_only_buttons`.
+
+## Wallpapers by time of day (`WallpaperMood`)
+
+`wallpaper_moods` in a theme's `config.json` groups the collection as `day`, `sunset` and `night` (the older `morning` and `evening` names still work when there is no `day` or `sunset` group).
+`WallpaperMood.groupsFor` turns the minute of the day into an ordered list of groups: from 45 minutes before sunset until 30 minutes after it, `sunset`, then `evening`, then `day`; from sunrise until then `day`,
+then `morning` or `evening`; otherwise `night`. `pick` takes the first group that has any of the collection's pictures, and the whole collection if none does. The sunrise and sunset come from `Sun`,
+NOAA's solar equations (a few minutes' accuracy) for the `latitude` and `longitude` strings in `config.xml`, in the TV's time zone: pure maths, no network and no location permission.
+`WallpaperPlayer` (Home) and `ClockScene` (the clock screensaver) both use it. When the group changes, a picture that is not in the new group is replaced at once rather than after the rotation interval.
+Covered by `WallpaperMoodTest` (plain JVM tests).
+
+## Typeface
+
+App names (on the cards and in the app library) use `@string/font_label`, which points at `res/font/inter.ttf`: Inter at weight 500 with its optical size set for small text, trimmed to Latin and Vietnamese.
+Everything else keeps upstream's Outfit. The APK is about 577 KB with it, a little over the upstream project's 576 KB size gate for pull requests, which does not apply to a build for your own TV.
 
 ## The icon pipeline
 

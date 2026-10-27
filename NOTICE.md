@@ -18,6 +18,12 @@ Each keeps the licence its author chose (CC BY 2.0, CC BY 4.0, CC BY-SA 3.0 or C
 every picture is in `tcl-tv-kit/theme/CREDITS.txt`. If you reuse them, keep that credit file with them and follow the licence of each picture.
 The screenshots in `docs/screenshots/` show some of these photographs behind the interface and carry the same credits.
 
+## Typeface
+
+The app names on the cards and in the app library are set in **Inter** (Copyright The Inter Project Authors, https://github.com/rsms/inter), licensed under the SIL Open Font License 1.1.
+The patch adds it as `res/font/inter.ttf`, a modified copy (one fixed Medium weight, trimmed to Latin and Vietnamese letters), together with its licence text as `launcher/FONT-LICENSE-INTER.txt`.
+Apple's own SF Pro is not used or included: its licence does not allow bundling it in an app like this. The rest of the launcher keeps the Outfit font it already ships with (SIL OFL 1.1).
+
 ## Logos and trademarks
 
 The three logo shapes in `tcl-tv-kit/icons/dl/` (YouTube, Stremio, Surfshark) are from [Simple Icons](https://simpleicons.org/) (CC0); the other tile logos are simple originals drawn for this project.

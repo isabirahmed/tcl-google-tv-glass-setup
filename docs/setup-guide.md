@@ -79,6 +79,8 @@ Edit `cleanyourtv/launcher/app/src/main/res/values/config.xml` first. At least t
 - `hidden_apps`: everything else you want kept off Home (they stay in the app library).
 - `app_keys`: your remote's app buttons.
 - `live_tv_package`: `com.tcl.tv` on this TV.
+- `latitude` and `longitude` (decimal degrees, the strings at the bottom of the file): your place, so the day, sunset and night wallpapers (step 5) follow your real sunrise and sunset.
+  The shipped values are the centre of Dubai as a placeholder. These are a **build setting**: after changing them, run `./install-launcher.sh` again.
 
 Then:
 
@@ -108,6 +110,25 @@ pushes `theme/` (the pictures in `theme/wallpapers/` and `theme/config.json`) to
 1920x1080, names with only letters, digits, `-`, `_` and `.`. Edit `wallpaper_rotation_minutes` (a new picture every N minutes, only while Home is on screen) and `wallpaper_dim`
 (0 to 90, the black overlay that keeps text readable on bright pictures). **After a theme push, check the remote's app buttons**: restarting Home can leave the key helper unbound
 until a reboot or a re-run of `./install-launcher.sh`.
+
+### Day, sunset and night pictures
+
+To show daylight pictures by day and night pictures after dark, group the file names in `theme/config.json`:
+
+```json
+"wallpaper_moods": {
+  "day":    ["01-georgia.jpg", "07-maldives.jpg"],
+  "sunset": ["09-maldives.jpg", "13-azerbaijan.jpg"],
+  "night":  ["04-dubai.jpg", "13-azerbaijan.jpg"]
+}
+```
+
+(That is only the format: look at your own pictures and sort them yourself. The public theme ships without groups, so it rotates through everything.)
+
+A picture may be in more than one group. The rotation then picks only from the group that fits the time: **sunset** from 45 minutes before sunset until 30 minutes after it, **day** from sunrise until then,
+**night** the rest. The sun is the one at the `latitude` and `longitude` of step 3, worked out on the TV with no network; without them it assumes 07:00 and 18:30. The change happens within about a minute
+of the time of day changing, while Home is on screen. A group that is missing, or has none of your pictures, falls back to the next one that fits and finally to the whole collection, so a collection with
+only a `night` group still shows everything by day. The TV's time zone has to be right (`getprop persist.sys.timezone`).
 
 ## 6. The photo screensaver
 

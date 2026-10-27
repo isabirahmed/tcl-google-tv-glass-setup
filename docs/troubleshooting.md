@@ -63,6 +63,13 @@ Android hides the network name from apps while **Location** is off. Turn Locatio
 They advance only while Home is on screen, in steps of `wallpaper_rotation_minutes`. After a long time in an app, Home moves on by one picture when you come back, not by one per elapsed interval.
 A picture that is still over about 8.4 million pixels after being scaled down is skipped.
 
+## The wallpaper does not match the time of day
+
+1. Is `wallpaper_moods` in the `config.json` that is on the TV? `tv.py 'cat /sdcard/Android/data/com.gathin.tvhome/files/config.json'`.
+2. The sun comes from `latitude` and `longitude` in `config.xml`, a **build setting**: if they are empty the launcher assumes sunrise 07:00 and sunset 18:30. Set them and run `./install-launcher.sh`.
+3. The TV's time zone must be right: `tv.py 'getprop persist.sys.timezone; date'`.
+4. A group needs pictures. With a single night picture it repeats all night; with none, the whole collection shows. The switch is checked about once a minute while Home is on screen.
+
 ## The air quality number differs from my phone
 
 See "Why the index can differ" in [how-it-works](how-it-works.md). Use `./set-aqi-key.sh` for a station reading.

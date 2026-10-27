@@ -17,8 +17,11 @@ script puts it all back.
 - **A debloated TV.** Seven small batches that switch off TCL's telemetry, ad and promo services, preloaded apps and a few apps most people never
   open, with a comment on every package. Live TV, HDMI inputs, the remote, Bluetooth pairing, the keyboard and Google Play are left alone.
 - **A glass-style launcher.** One centred row of square frosted-glass cards. The wallpaper is blurred once when it loads, and each card, pill and
-  button shows the blurred slice behind it, so logos and names stay sharp. The focused card rises by itself; there is no sliding overlay and no thick border.
-- **Wallpapers that change.** A shuffled collection of travel photos, a new one every 5 minutes while Home is on screen. Bring your own.
+  button shows the blurred slice behind it, so logos and names stay sharp. The cards, pill and buttons have no outline at all; the focused card simply rises and catches a light edge, with no sliding overlay. App names are set in
+  [Inter](https://rsms.me/inter/), the open typeface closest to Apple's SF Pro.
+- **Wallpapers that change, and follow the sun.** A shuffled collection of travel photos, a new one every 5 minutes while Home is on screen. Sort them into
+  `day`, `sunset` and `night` groups and the launcher shows daylight pictures by day, sunset pictures around sunset and night pictures after dark, using the real
+  sunrise and sunset for your coordinates (worked out on the TV, no network). Bring your own.
 - **Weather and air quality** for your city under the clock, e.g. `30° │ AQI 88`. The launcher itself still has **no internet access**: a separate 11 KB
   app fetches the data from [Open-Meteo](https://open-meteo.com/) and hands it over locally. Optionally use your own [IQAir](https://www.iqair.com/) key
   for a station reading.
