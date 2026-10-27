@@ -3,6 +3,7 @@
 ## This repository
 
 Code, patch, scripts, debloat lists and documentation: MIT, Copyright (c) 2026 Sabir Ahmed. See `LICENSE`.
+That licence covers only what was written for this repository. It does **not** cover the third-party material below, which keeps its own licence: in particular the wallpaper photographs (CC BY / CC BY-SA) and the Clean Your TV project this patch is applied to (MIT, by its own author).
 
 ## Clean Your TV (the base project)
 
