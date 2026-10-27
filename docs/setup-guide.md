@@ -95,8 +95,8 @@ Press every button on the real remote: an injected key is not proof for a button
 ## 4. Weather
 
 Set your place in `weather-feed/app/src/main/res/values/strings.xml` (`place`, `latitude`, `longitude`: look your city up on a map or with
-[Open-Meteo's geocoding API](https://open-meteo.com/en/docs/geocoding-api)), then `./install-weather-feed.sh`. The pill appears under the date within a few seconds.
-If it does not, see [troubleshooting](troubleshooting.md).
+[Open-Meteo's geocoding API](https://open-meteo.com/en/docs/geocoding-api)), then `./install-weather-feed.sh`. The pill appears under the date within a few seconds. The script installs the feed with `--force-queryable` and grants it TCL's auto-start permission; both matter after a restart.
+If it does not appear, see [troubleshooting](troubleshooting.md).
 
 ## 5. Wallpapers
 
@@ -134,7 +134,7 @@ It does **not** block YouTube ads. It also bypasses any DNS filtering your route
 
 ## 8. Reboot and check
 
-Reboot once, then check: Home is the new launcher, the pill is back, the remote's buttons work, Back on Home starts the screensaver, and
+Reboot once, then check (**and check the ADB port again**: USB debugging may have turned itself back on, see troubleshooting): Home is the new launcher, the pill is back, the remote's buttons work, Back on Home starts the screensaver, and
 `$TV 'pm list packages -d'` matches what it was before the reboot (some firmware re-enables a few packages at boot; note those instead of disabling them again).
 
 ## 9. Close ADB

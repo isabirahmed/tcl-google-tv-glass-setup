@@ -46,7 +46,14 @@ public class WeatherProvider extends ContentProvider {
         long updated = sp.getLong("updated", 0);
         long now = System.currentTimeMillis();
         boolean force = sp.getBoolean("force", false);
-        if ((force || now - updated > STALE_MS) && now - lastAttempt > RETRY_MS) refresh(ctx.getApplicationContext());
+        if ((force || now - updated > STALE_MS) && now - lastAttempt > RETRY_MS) {
+            // Fetch NOW, inside this call, and answer with the new numbers. The caller (the launcher) asks from its own
+            // background thread, so waiting is fine, and a process that is serving a call is not frozen. TCL's FreezeManager
+            // freezes this app between calls, which could stop a fetch thread started here and left running afterwards.
+            refresh(ctx.getApplicationContext());
+            sp = ctx.getSharedPreferences("w", Context.MODE_PRIVATE);
+            updated = sp.getLong("updated", 0);
+        }
         MatrixCursor c = new MatrixCursor(COLS);
         if (updated > 0) {
             c.addRow(new Object[]{sp.getInt("temp", 0), sp.getInt("feels", 0), sp.getInt("high", 0), sp.getInt("low", 0),
@@ -83,19 +90,18 @@ public class WeatherProvider extends ContentProvider {
         return out;
     }
 
+    /** One fetch at a time, on the calling thread. A second caller just reads what is cached. */
     private static void refresh(Context app) {
         if (!fetching.compareAndSet(false, true)) return;
         lastAttempt = System.currentTimeMillis();
-        new Thread(() -> {
-            try {
-                fetch(app);
-                app.getContentResolver().notifyChange(Uri.parse("content://local.tvweather/now"), null);
-            } catch (Exception ignored) {
-                // Offline or Open-Meteo down: keep the cached answer and try again after RETRY_MS.
-            } finally {
-                fetching.set(false);
-            }
-        }, "weather-fetch").start();
+        try {
+            fetch(app);
+            app.getContentResolver().notifyChange(Uri.parse("content://local.tvweather/now"), null);
+        } catch (Exception ignored) {
+            // Offline or Open-Meteo down: keep the cached answer and try again after RETRY_MS.
+        } finally {
+            fetching.set(false);
+        }
     }
 
     private static void fetch(Context app) throws Exception {
@@ -154,8 +160,8 @@ public class WeatherProvider extends ContentProvider {
 
     private static String get(String url) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        c.setConnectTimeout(8000);
-        c.setReadTimeout(8000);
+        c.setConnectTimeout(5000);
+        c.setReadTimeout(5000);
         c.setRequestProperty("User-Agent", "tv-weather-feed/1.0");
         try (InputStream in = c.getInputStream()) {
             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();

@@ -1,12 +1,16 @@
 diff --git a/launcher/app/src/main/AndroidManifest.xml b/launcher/app/src/main/AndroidManifest.xml
-index 701b5feb..76b62db4 100644
+index 701b5feb..ab8459de 100644
 --- a/launcher/app/src/main/AndroidManifest.xml
 +++ b/launcher/app/src/main/AndroidManifest.xml
-@@ -55,6 +55,8 @@
+@@ -55,6 +55,12 @@
              <action android:name="android.intent.action.MAIN" />
              <category android:name="com.gathin.tvhome.category.DOCK_CARD" />
          </intent>
-+        <!-- config.xml weather_provider: the app that publishes the weather line under the date. -->
++        <!-- config.xml weather_provider: the app that publishes the weather line under the date. Declared both ways: the
++             provider query alone was not enough after a restart on a TCL TV (Android answered "Failed to find provider info"
++             to this app while the ADB shell, which skips visibility, could read it). The feed is also installed with the
++             force-queryable flag by tcl-tv-kit/install-weather-feed.sh. -->
++        <package android:name="local.tvweather" />
 +        <provider android:authorities="local.tvweather" />
          <!-- stock_home_redirect: HomeKeyService looks up the stock launcher's HOME activity. -->
          <intent>
@@ -1060,10 +1064,10 @@ index 8da8dfa6..a3a9ca6a 100644
              Bitmap gpu = decoded.copy(Bitmap.Config.HARDWARE, false);
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/WeatherLine.java b/launcher/app/src/main/java/com/gathin/tvhome/WeatherLine.java
 new file mode 100644
-index 00000000..83307480
+index 00000000..00e71706
 --- /dev/null
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/WeatherLine.java
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,194 @@
 +package com.gathin.tvhome;
 +
 +import android.content.Context;
@@ -1074,6 +1078,8 @@ index 00000000..83307480
 +import android.net.Uri;
 +import android.os.Handler;
 +import android.os.HandlerThread;
++import android.content.SharedPreferences;
++import android.util.Log;
 +import android.view.View;
 +import android.widget.TextView;
 +
@@ -1092,8 +1098,16 @@ index 00000000..83307480
 +    private static final long RECHECK_MS = 2 * 60 * 1000L;
 +    /** The first query after a long pause may only trigger the provider's fetch: ask again shortly. */
 +    private static final long SOON_MS = 7000L;
-+    /** Older than this and the numbers would mislead: show nothing. */
-+    private static final long TOO_OLD_MS = 6 * 60 * 60 * 1000L;
++    /** While the feed cannot be reached and the last reading is on screen: look again every half minute. */
++    private static final long CACHED_MS = 30 * 1000L;
++    /**
++     * Older than this and the numbers would mislead: show nothing. Was 6 hours; a TV that was off overnight then lost the
++     * pill until the feed had refreshed, and the feed only refreshes while Home asks. Twelve hours covers a night.
++     */
++    private static final long TOO_OLD_MS = 12 * 60 * 60 * 1000L;
++    private static final String TAG = "TvHome.Weather";
++    /** Last good reading, kept in the launcher's own storage so a restart or an unreachable feed never blanks the pill. */
++    private static final String PREFS = "weather_last";
 +
 +    private final Context ctx;
 +    private final Uri uri;
@@ -1103,6 +1117,9 @@ index 00000000..83307480
 +    private final float density;
 +    private HandlerThread thread;
 +    private volatile Handler bg;
++    private final SharedPreferences last;
++    /** What the last read said, so the log gets a line when it changes and not one every 7 seconds. */
++    private int lastState = -1;
 +
 +    WeatherLine(Context ctx, String authority, View block, TextView line1, TextView line2, Handler ui) {
 +        this.ctx = ctx;
@@ -1112,6 +1129,7 @@ index 00000000..83307480
 +        this.line2 = line2;
 +        this.ui = ui;
 +        this.density = ctx.getResources().getDisplayMetrics().density;
++        this.last = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 +    }
 +
 +    void start() {
@@ -1125,8 +1143,8 @@ index 00000000..83307480
 +            @Override
 +            public void run() {
 +                if (bg != h) return;
-+                boolean got = readOnce(h);
-+                if (bg == h) h.postDelayed(this, got ? RECHECK_MS : SOON_MS);
++                int state = readOnce(h);
++                if (bg == h) h.postDelayed(this, state == FRESH ? RECHECK_MS : state == REMEMBERED ? CACHED_MS : SOON_MS);
 +            }
 +        });
 +    }
@@ -1140,24 +1158,55 @@ index 00000000..83307480
 +        // The last answer stays on screen while an app is on top, like the stats line.
 +    }
 +
-+    /** Runs off the main thread. True when a fresh enough row was shown. */
-+    private boolean readOnce(Handler me) {
-+        boolean got = false;
++    private static final int FRESH = 0, REMEMBERED = 1, NOTHING = 2;
++
++    /**
++     * Runs off the main thread. FRESH: a recent row from the feed was shown (and remembered). REMEMBERED: the feed could not be
++     * asked or had nothing recent, so the last good reading, if it is under 12 hours old, was shown. NOTHING: the pill is hidden.
++     */
++    private int readOnce(Handler me) {
++        int state = NOTHING;
 +        int temp = 0, aqi = -1;
 +        String symbol = "";
++        String why = "";
 +        try (Cursor c = ctx.getContentResolver().query(uri, null, null, null, null)) {
-+            if (c != null && c.moveToFirst()) {
++            if (c == null) {
++                // Android answers null, with "Failed to find provider info" in the log, when this app may not see the feed.
++                why = "the feed's provider was not found";
++            } else if (!c.moveToFirst()) {
++                why = "the feed has no reading yet";
++            } else {
 +                long updated = c.getLong(c.getColumnIndexOrThrow("updated"));
 +                if (System.currentTimeMillis() - updated < TOO_OLD_MS) {
 +                    temp = c.getInt(c.getColumnIndexOrThrow("temp"));
 +                    aqi = c.getInt(c.getColumnIndexOrThrow("aqi"));
 +                    symbol = c.getString(c.getColumnIndexOrThrow("symbol"));
-+                    got = true;
++                    state = FRESH;
++                    last.edit().putInt("temp", temp).putInt("aqi", aqi).putString("symbol", symbol)
++                            .putLong("at", System.currentTimeMillis()).apply();
++                } else {
++                    why = "the feed's reading is more than 12 hours old";
 +                }
 +            }
 +        } catch (RuntimeException e) {
-+            // The feed app is not installed, not allowed to start, or answered something else: show nothing.
++            // The feed app is not installed, not allowed to start, or answered something else.
++            why = "the feed could not be asked (" + e.getClass().getSimpleName() + ")";
 +        }
++        if (state != FRESH) {
++            long at = last.getLong("at", 0);
++            if (at > 0 && System.currentTimeMillis() - at < TOO_OLD_MS) {
++                temp = last.getInt("temp", 0);
++                aqi = last.getInt("aqi", -1);
++                symbol = last.getString("symbol", "");
++                state = REMEMBERED;
++            }
++        }
++        if (state != lastState) {
++            lastState = state;
++            if (state == FRESH) Log.i(TAG, "showing the feed's reading");
++            else Log.w(TAG, (state == REMEMBERED ? "showing the last reading: " : "nothing to show: ") + why);
++        }
++        boolean got = state != NOTHING;
 +        boolean show = got;
 +        int t = temp, a = aqi;
 +        String sym = symbol;
@@ -1179,7 +1228,7 @@ index 00000000..83307480
 +                line2.setCompoundDrawablesRelativeWithIntrinsicBounds(dot(a), null, null, null);
 +            }
 +        });
-+        return got;
++        return state;
 +    }
 +
 +    /** The provider's one-character weather symbol as a white drawable (1 dp of padding is set in the layout). */

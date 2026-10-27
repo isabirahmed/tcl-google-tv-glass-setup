@@ -76,13 +76,28 @@ A content provider with one URI, `content://local.tvweather/now`, read-only, ret
 
 `temp`, `feels`, `high`, `low`, `condition`, `symbol`, `aqi`, `aqi_label`, `place`, `updated`, `aqi_source`
 
-- A query that finds the data older than 25 minutes starts one background fetch (at most one per 2 minutes) and returns the cached row meanwhile. There is no service, no alarm and no boot receiver:
-  the app only runs while the launcher asks.
+- A query that finds the data older than 25 minutes **fetches inside that call** (at most once per 2 minutes) and answers with the new numbers; the launcher asks from its own background thread, so waiting is fine.
+  There is no service, no alarm and no boot receiver: the app only runs while the launcher asks. (A fetch on a thread left running after the call can be stopped halfway: TCL's `FreezeManager`
+  freezes the app between calls, which is why the fetch happens inside the call.)
 - Weather and the air-quality index come from Open-Meteo for the coordinates in `strings.xml`.
 - **Optional IQAir key.** `content call --uri content://local.tvweather --method set_key --arg <key>` stores a key; with one, the index comes from IQAir's nearest-city reading and
   `aqi_source` says `iqair`. The call is accepted only from the ADB shell (uid 2000) or root, checks the key's shape (36 hex digits and dashes), and the key is stored in the app's private storage and
   is never returned by `query`. `./set-aqi-key.sh` wraps it and reads the key from your keyboard with no echo.
 - **Why the index can differ from another app:** the model value is a 24-hour average of a satellite-assisted model on a coarse grid. On the author's TV it read 128 while a station-based app read about 87.
+
+## Why the pill survives a restart (three layers)
+
+The pill once vanished after a restart while everything looked healthy: the feed was installed, allowed, and answered the ADB shell. The launcher's own requests were refused with
+`Failed to find provider info for local.tvweather`. The ADB shell reads providers by a route that **skips Android's package-visibility rules**; an ordinary app does not, and at that boot
+the launcher's visibility table did not include the feed (`dumpsys package queries`). It had at earlier boots, so it is fragile, not reliably broken. So the pill no longer depends on one mechanism:
+
+1. **`pm install --force-queryable`** (Android 11+, ADB shell only, done by `install-weather-feed.sh`) makes the feed visible to every app and is stored with the package. This alone brought the pill back.
+2. The launcher's manifest also declares the feed **by package name** (`<queries><package .../>`), next to the provider query.
+3. The launcher **remembers the last good reading** in its own storage and shows it for up to 12 hours if the feed cannot be reached (it asks again every 30 s). Without that, any hiccup blanks the pill.
+   The same 12 hours replaces the old 6-hour limit on the feed's own row, so a TV that was off overnight does not lose the pill until the feed has refreshed.
+
+Checked on the TV: after a cold reboot the pill is there with zero `Failed to find provider info` lines; with the feed disabled the pill stays and the launcher falls back to the 30-second rhythm;
+re-enabling the feed recovers by itself and keeps its force-queryable status.
 
 ## TCL's rule for apps that start in the background
 

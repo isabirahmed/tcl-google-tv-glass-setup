@@ -42,7 +42,17 @@ Holding the key should still ramp. If your remote behaves differently, turn it o
 1. Is the feed installed, and may it start? `tv.py 'pm list packages local.tvweather'`, then `tv.py 'appops get local.tvweather APP_AUTO_START'` should say `allow`.
 2. Ask the feed directly: `tv.py 'content query --user 0 --uri content://local.tvweather/now'`. The first call may return nothing while it fetches; ask again after a few seconds.
 3. `Could not find provider` means TCL's boot manager blocked it: `tv.py 'appops set local.tvweather APP_AUTO_START allow; appops write-settings'`.
-4. No network, or Private DNS blocking Open-Meteo, shows nothing rather than stale numbers (data older than 6 hours is hidden).
+4. **Your query works but the pill is still missing, and `logcat -d | grep "Failed to find provider info for local.tvweather"` shows lines:** package visibility. The ADB shell skips it; the launcher does not.
+   Reinstall the feed with `./install-weather-feed.sh` (it uses `pm install -r --force-queryable`) and check `dumpsys package queries` lists `local.tvweather` under `forceQueryable`. See
+   [how-it-works](how-it-works.md#why-the-pill-survives-a-restart-three-layers).
+5. No network, or Private DNS blocking Open-Meteo: the launcher keeps showing the last reading for up to 12 hours, then hides the pill rather than show stale numbers.
+
+## USB debugging is on again after I restarted the TV
+
+On the TV this was built on, turning USB debugging off (Developer options, or `settings put global adb_enabled 0`) closed port 5555 straight away, but **it came back at the next boot**:
+`persist.sys.usb.config` stays `adb`, and the firmware rebuilds the setting from that at every start. `ro.adb.secure` is 1 (keys are checked). After "Revoke USB debugging authorizations", a computer that had been authorised before
+reconnected without my seeing any prompt (I could not watch the TV while it connected, so a quick tap on an "Allow" prompt cannot be ruled out); check for yourself whether the revoke does what it says. So: **check the port after your first restart** (`adb-closed.py`), and expect to switch debugging off again each time you use it.
+A lasting fix means changing a persistent system property over ADB, which this project does not do for you. Do it only if you understand it: the effect on this firmware was not tested.
 
 ## The Wi-Fi button just says "Wi-Fi" instead of the network name
 

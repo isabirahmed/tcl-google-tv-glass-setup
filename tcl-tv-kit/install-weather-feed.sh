@@ -25,6 +25,9 @@ cd "$KIT/weather-feed"
 ./gradlew assembleRelease -q --console=plain
 APK=app/build/outputs/apk/release/app-release.apk
 "$REPO/tools/venv/bin/python" -I "$REPO/tools/b64push.py" "$APK" /data/local/tmp/feed.apk
-"$REPO/tools/tv.py" 'pm install -r /data/local/tmp/feed.apk; rm -f /data/local/tmp/feed.apk'
+# --force-queryable (Android 11+, only the ADB shell may use it) makes the feed visible to every app and is kept with the package.
+# Without it, Android's package-visibility rules can refuse the launcher access to the feed's provider after a restart
+# ("Failed to find provider info"), while the ADB shell, which skips those rules, still reads it. Older Android: plain install.
+"$REPO/tools/tv.py" 'pm install -r --force-queryable /data/local/tmp/feed.apk || pm install -r /data/local/tmp/feed.apk; rm -f /data/local/tmp/feed.apk'
 "$REPO/tools/tv.py" 'cmd appops set local.tvweather APP_AUTO_START allow; appops write-settings'
 echo "Installed. Press Home on the TV; the weather pill appears within a few seconds."
