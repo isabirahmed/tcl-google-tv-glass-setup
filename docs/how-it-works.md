@@ -77,7 +77,7 @@ Covered by `WallpaperMoodTest` (plain JVM tests).
 ## Typeface
 
 App names (on the cards and in the app library) use `@string/font_label`, which points at `res/font/inter.ttf`: Inter at weight 500 with its optical size set for small text, trimmed to Latin and Vietnamese.
-Everything else keeps upstream's Outfit. The APK is about 577 KB with it, a little over the upstream project's 576 KB size gate for pull requests, which does not apply to a build for your own TV.
+Everything else keeps upstream's Outfit. The APK is about 582 KB with it, a little over the upstream project's 576 KB size gate for pull requests, which does not apply to a build for your own TV.
 
 ## The icon pipeline
 
@@ -85,6 +85,11 @@ Everything else keeps upstream's Outfit. The APK is about 577 KB with it, a litt
 around it). The SVGs are treated as untrusted: only `d`, `fill` and `stroke` of `<path>` elements are read, each checked against a whitelist before it goes into XML. The generated
 drawables are already in the patch; you only run the script to add or change a logo.
 
+**Sharp logos.** The banner is drawn at the card's real size, 86 x 77.5 dp (`TILE_W`, `TILE_H` in the script, matching `square_tile_dp` 86 and `square_tile_aspect` 90, which `AppAdapter.tileHeightPx` rounds to 155 px at
+density 2), so the card's ImageView shows it 1:1. An earlier version drew it at 180 x 162 dp and let the ImageView shrink it, and the logos' cached bitmaps were resampled at about 0.48, which left soft, stair-stepped edges.
+If you change the card size in `config.xml`, change those two numbers to match and re-run the script. On top of that, `AppAdapter.bundledBanner` swaps each banner's `VectorDrawable` logo for a `GlyphDrawable`, which reads the
+same vector XML but draws its paths directly. Skia then rasterises them at the size they are actually drawn, so the logos stay crisp when the focused card zooms to 1.12x (a `VectorDrawable` resamples its cached bitmap there and goes soft). A glyph
+that cannot be read keeps its `VectorDrawable`. The screen itself is whatever resolution the TV reports (1920 x 1080 on the author's), so that is the limit.
 ## The weather feed (`local.tvweather`)
 
 A content provider with one URI, `content://local.tvweather/now`, read-only, returning one row:

@@ -25,9 +25,16 @@ ICONS = {
     "browsehere": (HERE / "custom/browsehere.svg", "#2F6BFF", 58),
     "weather": (HERE / "custom/weather.svg", "#3C9BF0", 62),
 }
-TILE_W, TILE_H = 180, 162          # dp, aspect 90 % (config.xml square_tile_aspect)
-RADIUS = 40                          # dp, 22 % of the width (AppAdapter.cornerRadius)
-ICON_CENTER_Y = round(TILE_H * 0.41)  # the logo's centre; the name sits just under it (AppAdapter label padding)
+# The art is drawn at the card's REAL size, so the card's ImageView shows it 1:1. Drawn at 180 x 162 dp and shrunk to the 86 dp card, the
+# logos' cached bitmaps were resampled at 0.48 and their edges came out stair-stepped. 86 dp x 90 % = 77.4 dp = 154.8 px, which
+# AppAdapter.tileHeightPx rounds to 155 px (77.5 dp at density 2); keep these in step with config.xml square_tile_dp / square_tile_aspect.
+TILE_W, TILE_H = 86, 77.5           # dp
+RADIUS = 18.9                        # dp, 22 % of the width (AppAdapter.cornerRadius)
+SCALE = TILE_W / 180                 # the glyph sizes below were chosen on a 180 dp wide tile
+ICON_CENTER_Y = TILE_H * 0.41        # the logo's centre; the name sits just under it (AppAdapter label padding)
+
+def dp(x):
+    return ("%.1f" % x).rstrip("0").rstrip(".")
 
 def attr(tag, name):
     m = re.search(r'\b%s="([^"]*)"' % re.escape(name), tag)
@@ -68,47 +75,41 @@ BANNER = '''<?xml version="1.0" encoding="utf-8"?>
 <!-- Glass layers of the frosted card for %(name)s (config.xml, app_banners), modelled on the owner's reference card. The blurred
      wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
      (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
-     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour, a hairline edge, and the logo a little
-     above centre so the name (drawn by the launcher) sits tight under it. Radius %(r)ddp of %(w)ddp = the 22%% corner
-     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
+     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour (no edge line: the card is just glass), and the logo a little
+     above centre so the name (drawn by the launcher) sits tight under it. Radius %(r)sdp of %(w)sdp = the 22%% corner
+     AppAdapter.cornerRadius clips to. Drawn at the card's real size (no ImageView rescaling), which keeps the logo's edges smooth. Made by work/icons/build_icons.py. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:width="%(w)ddp" android:height="%(h)ddp">
+    <item android:width="%(w)sdp" android:height="%(h)sdp">
         <shape android:shape="rectangle">
             <solid android:color="#66000000" />
-            <corners android:radius="%(r)ddp" />
+            <corners android:radius="%(r)sdp" />
         </shape>
     </item>
-    <item android:width="%(w)ddp" android:height="%(h)ddp">
+    <item android:width="%(w)sdp" android:height="%(h)sdp">
         <shape android:shape="rectangle">
             <solid android:color="#10FFFFFF" />
-            <corners android:radius="%(r)ddp" />
+            <corners android:radius="%(r)sdp" />
         </shape>
     </item>
-    <item android:width="%(w)ddp" android:height="%(h)ddp">
+    <item android:width="%(w)sdp" android:height="%(h)sdp">
         <shape android:shape="rectangle">
             <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
-            <corners android:radius="%(r)ddp" />
+            <corners android:radius="%(r)sdp" />
         </shape>
     </item>
-    <item android:width="%(w)ddp" android:height="%(h)ddp">
+    <item android:width="%(w)sdp" android:height="%(h)sdp">
         <shape android:shape="rectangle">
             <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
-            <corners android:radius="%(r)ddp" />
+            <corners android:radius="%(r)sdp" />
         </shape>
     </item>
-    <item android:width="%(w)ddp" android:height="%(h)ddp">
+    <item android:width="%(w)sdp" android:height="%(h)sdp">
         <shape android:shape="rectangle">
             <solid android:color="%(tint)s" />
-            <corners android:radius="%(r)ddp" />
+            <corners android:radius="%(r)sdp" />
         </shape>
     </item>
-    <item android:width="%(w)ddp" android:height="%(h)ddp">
-        <shape android:shape="rectangle">
-            <stroke android:width="1.5dp" android:color="#22FFFFFF" />
-            <corners android:radius="%(r)ddp" />
-        </shape>
-    </item>
-    <item android:width="%(size)ddp" android:height="%(size)ddp" android:top="%(top)ddp" android:gravity="top|center_horizontal"
+    <item android:width="%(size)sdp" android:height="%(size)sdp" android:top="%(top)sdp" android:gravity="top|center_horizontal"
         android:drawable="@drawable/glyph_%(name)s" />
 </layer-list>
 '''
@@ -117,5 +118,6 @@ for name, (path, brand, size) in ICONS.items():
     OUT.joinpath("glyph_%s.xml" % name).write_text(vector(path.read_text()))
     tint = "#12" + brand[1:]   # 7 % of the app's colour, flat
     OUT.joinpath("banner_%s.xml" % name).write_text(BANNER % {
-        "name": name, "w": TILE_W, "h": TILE_H, "r": RADIUS, "size": size, "top": ICON_CENTER_Y - size // 2, "tint": tint})
+        "name": name, "w": dp(TILE_W), "h": dp(TILE_H), "r": dp(RADIUS), "size": dp(size * SCALE),
+        "top": dp(ICON_CENTER_Y - size * SCALE / 2), "tint": tint})
     print("wrote glyph_%s.xml + banner_%s.xml" % (name, name))

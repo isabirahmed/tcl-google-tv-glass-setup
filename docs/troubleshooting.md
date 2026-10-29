@@ -83,6 +83,12 @@ Compare `pm list packages -d` before and after a reboot.
 
 `./restore.sh`, then reboot. If you lost the undo records (`~/.cleanyourtv/`), the upstream project's recovery notes explain how to re-enable the packages in a list by hand.
 
+## The logos on the cards look soft
+
+The card art is drawn at the card's real size and the logos are drawn as paths (see [how-it-works](how-it-works.md#the-icon-pipeline)), which keeps them crisp. If you changed `square_tile_dp` or `square_tile_aspect` in `config.xml`, set `TILE_W` and
+`TILE_H` in `icons/build_icons.py` to the same size (height = width x aspect / 100, in dp) and run the script again, then copy the new `banner_*.xml` into `launcher/app/src/main/res/drawable/`. Also check what resolution the TV renders at:
+`tv.py 'wm size'`. A TV that reports 1080p but has a 4K panel scales the picture, and nothing in the launcher can add detail to that.
+
 ## Not exercised
 
 Honest list of what the author did not test: other TVs and firmware; the library's hold-OK options menu on a real remote; the setup from a factory-fresh TV in one run (each step was run

@@ -1,6 +1,6 @@
 diff --git a/launcher/FONT-LICENSE-INTER.txt b/launcher/FONT-LICENSE-INTER.txt
 new file mode 100644
-index 00000000..21f6aff9
+index 0000000..21f6aff
 --- /dev/null
 +++ b/launcher/FONT-LICENSE-INTER.txt
 @@ -0,0 +1,93 @@
@@ -98,7 +98,7 @@ index 00000000..21f6aff9
 +FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 +OTHER DEALINGS IN THE FONT SOFTWARE.
 diff --git a/launcher/app/src/main/AndroidManifest.xml b/launcher/app/src/main/AndroidManifest.xml
-index 701b5feb..ab8459de 100644
+index 701b5fe..ab8459d 100644
 --- a/launcher/app/src/main/AndroidManifest.xml
 +++ b/launcher/app/src/main/AndroidManifest.xml
 @@ -55,6 +55,12 @@
@@ -115,7 +115,7 @@ index 701b5feb..ab8459de 100644
          <intent>
              <action android:name="android.intent.action.MAIN" />
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/AppAdapter.java b/launcher/app/src/main/java/com/gathin/tvhome/AppAdapter.java
-index 3632d74b..a3bcb39c 100644
+index 3632d74..7305e97 100644
 --- a/launcher/app/src/main/java/com/gathin/tvhome/AppAdapter.java
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/AppAdapter.java
 @@ -105,13 +105,23 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
@@ -142,7 +142,30 @@ index 3632d74b..a3bcb39c 100644
          return Math.round(tileWidthPx * DESIGN_H_DP / DESIGN_W_DP);
      }
  
-@@ -425,6 +435,14 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+@@ -344,7 +354,21 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+     private Drawable bundledBanner(String name) {
+         if (name == null || !name.startsWith("banner_")) return null;
+         int id = ctx.getResources().getIdentifier(name, "drawable", ctx.getPackageName());
+-        return id != 0 ? ctx.getDrawable(id) : null;
++        if (id == 0) return null;
++        Drawable banner = ctx.getDrawable(id);
++        // The logo layer is drawn as plain paths (GlyphDrawable) so it stays crisp under the focus zoom; a VectorDrawable's
++        // cached bitmap is resampled and goes soft. A glyph that cannot be read keeps its VectorDrawable.
++        int glyphId = ctx.getResources().getIdentifier("glyph_" + name.substring("banner_".length()), "drawable", ctx.getPackageName());
++        if (glyphId != 0 && banner instanceof android.graphics.drawable.LayerDrawable) {
++            android.graphics.drawable.LayerDrawable layers = (android.graphics.drawable.LayerDrawable) banner.mutate();
++            for (int i = 0; i < layers.getNumberOfLayers(); i++) {
++                if (layers.getDrawable(i) instanceof android.graphics.drawable.VectorDrawable) {
++                    GlyphDrawable glyph = GlyphDrawable.load(ctx.getResources(), glyphId);
++                    if (glyph != null) layers.setDrawable(i, glyph);
++                }
++            }
++        }
++        return banner;
+     }
+ 
+     private Drawable loadBanner(PackageManager pm, ResolveInfo ri) {
+@@ -425,6 +449,14 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
              iconLp.width = iconLp.height = Math.round(h * ICON_SHARE);
              iconLp.bottomMargin = 0;
              icon.setLayoutParams(iconLp);
@@ -157,7 +180,7 @@ index 3632d74b..a3bcb39c 100644
          } else if (h < Math.round(DESIGN_H_DP * density)) {
              // Shrunk tiles (e.g. 5 or 6 columns): scale icon and bottom margin proportionally with tile height so the label does not overlap the icon.
              View icon = v.findViewById(R.id.icon);
-@@ -466,13 +484,17 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+@@ -466,13 +498,17 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
          h.name.setAlpha(focused ? 1f : restNameAlpha);
          h.card.setScaleX(focused && animations ? focusScale() : 1f);
          h.card.setScaleY(focused && animations ? focusScale() : 1f);
@@ -178,7 +201,7 @@ index 3632d74b..a3bcb39c 100644
          if (uniformTiles && e.banner == null) {
              if (e.backdrop == null) e.backdrop = backdrop(e.icon, ambientColorAt(position));
              h.card.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, e.backdrop));
-@@ -481,7 +503,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+@@ -481,7 +517,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
              h.banner.setImageDrawable(e.banner);
              h.banner.setVisibility(View.VISIBLE);
              h.icon.setVisibility(View.GONE);
@@ -188,7 +211,7 @@ index 3632d74b..a3bcb39c 100644
          } else {
              h.banner.setImageDrawable(null);
              h.banner.setVisibility(View.GONE);
-@@ -651,7 +674,11 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+@@ -651,7 +688,11 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
          return e.banner != null ? e.banner : e.icon;
      }
  
@@ -200,7 +223,7 @@ index 3632d74b..a3bcb39c 100644
          return !animations ? 1f : advancedEffects ? 1.12f : 1.10f;
      }
  
-@@ -856,6 +883,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+@@ -856,6 +897,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
  
      /** Corner radius for a tile of this width: 16dp at the design width, proportionally less when smaller. */
      static float cornerRadius(int tileWidthPx, float density) {
@@ -208,7 +231,7 @@ index 3632d74b..a3bcb39c 100644
          return 16f * density * Math.min(1f, tileWidthPx / (DESIGN_W_DP * density));
      }
  
-@@ -863,6 +891,10 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+@@ -863,6 +905,10 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
          final View card;
          /** item_app.xml's tile_bg: the dark card behind an icon tile, or behind a banner that has transparent parts. */
          final Drawable cardBackground;
@@ -219,7 +242,7 @@ index 3632d74b..a3bcb39c 100644
          final ImageView banner;
          final ImageView icon;
          final TextView label;
-@@ -879,6 +911,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+@@ -879,6 +925,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
              super(v);
              card = v.findViewById(R.id.card);
              cardBackground = card.getBackground();
@@ -227,7 +250,7 @@ index 3632d74b..a3bcb39c 100644
              banner = v.findViewById(R.id.banner);
              icon = v.findViewById(R.id.icon);
              label = v.findViewById(R.id.label);
-@@ -898,6 +931,12 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+@@ -898,6 +945,12 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                  }
              });
              card.setClipToOutline(true);
@@ -240,7 +263,7 @@ index 3632d74b..a3bcb39c 100644
  
              card.setOnKeyListener((view, keyCode, event) -> {
                  if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-@@ -911,8 +950,10 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+@@ -911,8 +964,10 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                  view.animate().cancel();
                  banner.animate().cancel();
                  name.animate().cancel();
@@ -252,7 +275,7 @@ index 3632d74b..a3bcb39c 100644
                  if (!animations) {
                      view.setScaleX(1f);
                      view.setScaleY(1f);
-@@ -938,8 +979,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+@@ -938,8 +993,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                      if (focused) name.setTranslationY(density * 4f);
                  } else {
                      view.animate().scaleX(s).scaleY(s)
@@ -264,7 +287,7 @@ index 3632d74b..a3bcb39c 100644
                              .setInterpolator(focused && !overshoot ? new DecelerateInterpolator(1.5f)
                                      : new OvershootInterpolator(focused ? (advancedEffects ? 0.7f : 1.6f) : 0f))
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/AppLibraryDialog.java b/launcher/app/src/main/java/com/gathin/tvhome/AppLibraryDialog.java
-index e62db463..bb29e5b2 100644
+index e62db46..bb29e5b 100644
 --- a/launcher/app/src/main/java/com/gathin/tvhome/AppLibraryDialog.java
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/AppLibraryDialog.java
 @@ -103,6 +103,10 @@ final class AppLibraryDialog {
@@ -524,7 +547,7 @@ index e62db463..bb29e5b2 100644
      }
  }
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/ClockScene.java b/launcher/app/src/main/java/com/gathin/tvhome/ClockScene.java
-index dcae93ad..3a954f1c 100644
+index dcae93a..3a954f1 100644
 --- a/launcher/app/src/main/java/com/gathin/tvhome/ClockScene.java
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/ClockScene.java
 @@ -218,8 +218,7 @@ final class ClockScene {
@@ -538,7 +561,7 @@ index dcae93ad..3a954f1c 100644
  
      private void moveClock() {
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/Config.java b/launcher/app/src/main/java/com/gathin/tvhome/Config.java
-index 71356fff..c9b21724 100644
+index 71356ff..c9b2172 100644
 --- a/launcher/app/src/main/java/com/gathin/tvhome/Config.java
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/Config.java
 @@ -232,6 +232,8 @@ final class Config {
@@ -560,7 +583,7 @@ index 71356fff..c9b21724 100644
  
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/GlassBackdrop.java b/launcher/app/src/main/java/com/gathin/tvhome/GlassBackdrop.java
 new file mode 100644
-index 00000000..f19f837b
+index 0000000..f19f837
 --- /dev/null
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/GlassBackdrop.java
 @@ -0,0 +1,199 @@
@@ -764,7 +787,7 @@ index 00000000..f19f837b
 +    }
 +}
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/GlassView.java b/launcher/app/src/main/java/com/gathin/tvhome/GlassView.java
-index 0fd2b6cd..9a013955 100644
+index 0fd2b6c..9a01395 100644
 --- a/launcher/app/src/main/java/com/gathin/tvhome/GlassView.java
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/GlassView.java
 @@ -12,13 +12,23 @@ import android.view.View;
@@ -891,9 +914,135 @@ index 0fd2b6cd..9a013955 100644
 +        canvas.drawRoundRect(rect, radius, radius, rim);
 +    }
  }
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/GlyphDrawable.java b/launcher/app/src/main/java/com/gathin/tvhome/GlyphDrawable.java
+new file mode 100644
+index 0000000..4db6a75
+--- /dev/null
++++ b/launcher/app/src/main/java/com/gathin/tvhome/GlyphDrawable.java
+@@ -0,0 +1,120 @@
++package com.gathin.tvhome;
++
++import android.content.res.Resources;
++import android.content.res.XmlResourceParser;
++import android.graphics.Canvas;
++import android.graphics.ColorFilter;
++import android.graphics.Paint;
++import android.graphics.Path;
++import android.graphics.PixelFormat;
++import android.graphics.Rect;
++import android.graphics.drawable.Drawable;
++
++import androidx.annotation.NonNull;
++import androidx.annotation.Nullable;
++import androidx.core.graphics.PathParser;
++
++import org.xmlpull.v1.XmlPullParser;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * Local change: a bundled glyph_* logo drawn as plain paths. VectorDrawable keeps a cached bitmap of the logo and
++ * resamples it whenever the card is scaled (the focus zoom, or art that is not the card's own size), which is what made
++ * the logos look soft and pixelated. Paths are rasterised by Skia at the size they are actually drawn, so the edges
++ * stay crisp in every state. Reads the same vector XML the generator writes (work/icons/build_icons.py): one or more
++ * {@code <path>} elements with pathData, fillColor, strokeColor, strokeWidth, strokeLineCap and strokeLineJoin.
++ */
++final class GlyphDrawable extends Drawable {
++    private static final String ANDROID = "http://schemas.android.com/apk/res/android";
++
++    private final List<Path> paths = new ArrayList<>();
++    private final List<Paint> fills = new ArrayList<>();      // null where the path has no fill
++    private final List<Paint> strokes = new ArrayList<>();    // null where the path has no stroke
++    private final float viewport;
++
++    private GlyphDrawable(float viewport) {
++        this.viewport = viewport;
++    }
++
++    /** The glyph in this vector drawable resource, or null when it cannot be read (the caller keeps the VectorDrawable). */
++    @Nullable
++    static GlyphDrawable load(Resources res, int id) {
++        try (XmlResourceParser p = res.getXml(id)) {
++            GlyphDrawable glyph = null;
++            for (int event = p.getEventType(); event != XmlPullParser.END_DOCUMENT; event = p.next()) {
++                if (event != XmlPullParser.START_TAG) continue;
++                if ("vector".equals(p.getName())) {
++                    glyph = new GlyphDrawable(p.getAttributeFloatValue(ANDROID, "viewportWidth", 24f));
++                } else if ("path".equals(p.getName()) && glyph != null) {
++                    String data = p.getAttributeValue(ANDROID, "pathData");
++                    Path path = data == null ? null : PathParser.createPathFromPathData(data);
++                    if (path == null) return null;
++                    Paint fill = null;
++                    if (p.getAttributeValue(ANDROID, "fillColor") != null) {
++                        fill = paint(Paint.Style.FILL, p.getAttributeIntValue(ANDROID, "fillColor", 0xFFFFFFFF));
++                    }
++                    Paint stroke = null;
++                    if (p.getAttributeValue(ANDROID, "strokeColor") != null) {
++                        stroke = paint(Paint.Style.STROKE, p.getAttributeIntValue(ANDROID, "strokeColor", 0xFFFFFFFF));
++                        stroke.setStrokeWidth(p.getAttributeFloatValue(ANDROID, "strokeWidth", 1f));
++                        String cap = p.getAttributeValue(ANDROID, "strokeLineCap");
++                        if ("round".equals(cap)) stroke.setStrokeCap(Paint.Cap.ROUND);
++                        else if ("square".equals(cap)) stroke.setStrokeCap(Paint.Cap.SQUARE);
++                        String join = p.getAttributeValue(ANDROID, "strokeLineJoin");
++                        if ("round".equals(join)) stroke.setStrokeJoin(Paint.Join.ROUND);
++                        else if ("bevel".equals(join)) stroke.setStrokeJoin(Paint.Join.BEVEL);
++                    }
++                    glyph.paths.add(path);
++                    glyph.fills.add(fill);
++                    glyph.strokes.add(stroke);
++                }
++            }
++            return glyph != null && !glyph.paths.isEmpty() ? glyph : null;
++        } catch (Exception e) {
++            return null;
++        }
++    }
++
++    private static Paint paint(Paint.Style style, int color) {
++        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++        paint.setStyle(style);
++        paint.setColor(color);
++        return paint;
++    }
++
++    @Override
++    public void draw(@NonNull Canvas canvas) {
++        Rect b = getBounds();
++        if (b.isEmpty()) return;
++        int save = canvas.save();
++        canvas.translate(b.left, b.top);
++        float scale = Math.min(b.width(), b.height()) / viewport;
++        canvas.scale(scale, scale);
++        for (int i = 0; i < paths.size(); i++) {
++            if (fills.get(i) != null) canvas.drawPath(paths.get(i), fills.get(i));
++            if (strokes.get(i) != null) canvas.drawPath(paths.get(i), strokes.get(i));
++        }
++        canvas.restoreToCount(save);
++    }
++
++    @Override
++    public void setAlpha(int alpha) {
++        for (Paint paint : fills) if (paint != null) paint.setAlpha(alpha);
++        for (Paint paint : strokes) if (paint != null) paint.setAlpha(alpha);
++        invalidateSelf();
++    }
++
++    @Override
++    public void setColorFilter(@Nullable ColorFilter filter) {
++        for (Paint paint : fills) if (paint != null) paint.setColorFilter(filter);
++        for (Paint paint : strokes) if (paint != null) paint.setColorFilter(filter);
++        invalidateSelf();
++    }
++
++    @Override
++    public int getOpacity() {
++        return PixelFormat.TRANSLUCENT;
++    }
++}
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/LiftSheen.java b/launcher/app/src/main/java/com/gathin/tvhome/LiftSheen.java
 new file mode 100644
-index 00000000..48b26563
+index 0000000..48b2656
 --- /dev/null
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/LiftSheen.java
 @@ -0,0 +1,95 @@
@@ -993,7 +1142,7 @@ index 00000000..48b26563
 +    }
 +}
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java b/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java
-index a5acd794..9ff2723a 100644
+index a5acd79..9ff2723 100644
 --- a/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java
 @@ -190,6 +190,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
@@ -1146,7 +1295,7 @@ index a5acd794..9ff2723a 100644
      private View firstTopButton() {
          ViewGroup bar = findViewById(R.id.topButtons);
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/WallpaperMood.java b/launcher/app/src/main/java/com/gathin/tvhome/WallpaperMood.java
-index a6f6979a..4680a989 100644
+index a6f6979..4680a98 100644
 --- a/launcher/app/src/main/java/com/gathin/tvhome/WallpaperMood.java
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/WallpaperMood.java
 @@ -10,18 +10,22 @@ import java.util.Set;
@@ -1226,7 +1375,7 @@ index a6f6979a..4680a989 100644
      }
  }
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/WallpaperPlayer.java b/launcher/app/src/main/java/com/gathin/tvhome/WallpaperPlayer.java
-index 8da8dfa6..ccb33b1a 100644
+index 8da8dfa..ccb33b1 100644
 --- a/launcher/app/src/main/java/com/gathin/tvhome/WallpaperPlayer.java
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/WallpaperPlayer.java
 @@ -41,6 +41,8 @@ final class WallpaperPlayer {
@@ -1267,7 +1416,7 @@ index 8da8dfa6..ccb33b1a 100644
              Bitmap gpu = decoded.copy(Bitmap.Config.HARDWARE, false);
 diff --git a/launcher/app/src/main/java/com/gathin/tvhome/WeatherLine.java b/launcher/app/src/main/java/com/gathin/tvhome/WeatherLine.java
 new file mode 100644
-index 00000000..00e71706
+index 0000000..00e7170
 --- /dev/null
 +++ b/launcher/app/src/main/java/com/gathin/tvhome/WeatherLine.java
 @@ -0,0 +1,194 @@
@@ -1467,7 +1616,7 @@ index 00000000..00e71706
 +}
 diff --git a/launcher/app/src/main/res/drawable/banner_browsehere.xml b/launcher/app/src/main/res/drawable/banner_browsehere.xml
 new file mode 100644
-index 00000000..09b70615
+index 0000000..83615cf
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/banner_browsehere.xml
 @@ -0,0 +1,41 @@
@@ -1476,45 +1625,45 @@ index 00000000..09b70615
 +     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
 +     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
 +     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour (no edge line: the card is just glass), and the logo a little
-+     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
-+     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 18.9dp of 86dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Drawn at the card's real size (no ImageView rescaling), which keeps the logo's edges smooth. Made by work/icons/build_icons.py. -->
 +<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#66000000" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#10FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#122F6BFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="58dp" android:height="58dp" android:top="37dp" android:gravity="top|center_horizontal"
++    <item android:width="27.7dp" android:height="27.7dp" android:top="17.9dp" android:gravity="top|center_horizontal"
 +        android:drawable="@drawable/glyph_browsehere" />
 +</layer-list>
 diff --git a/launcher/app/src/main/res/drawable/banner_googleplay.xml b/launcher/app/src/main/res/drawable/banner_googleplay.xml
 new file mode 100644
-index 00000000..362ca829
+index 0000000..9784e56
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/banner_googleplay.xml
 @@ -0,0 +1,41 @@
@@ -1523,45 +1672,45 @@ index 00000000..362ca829
 +     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
 +     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
 +     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour (no edge line: the card is just glass), and the logo a little
-+     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
-+     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 18.9dp of 86dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Drawn at the card's real size (no ImageView rescaling), which keeps the logo's edges smooth. Made by work/icons/build_icons.py. -->
 +<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#66000000" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#10FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#122EC26A" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="54dp" android:height="54dp" android:top="39dp" android:gravity="top|center_horizontal"
++    <item android:width="25.8dp" android:height="25.8dp" android:top="18.9dp" android:gravity="top|center_horizontal"
 +        android:drawable="@drawable/glyph_googleplay" />
 +</layer-list>
 diff --git a/launcher/app/src/main/res/drawable/banner_stremio.xml b/launcher/app/src/main/res/drawable/banner_stremio.xml
 new file mode 100644
-index 00000000..5aded0b5
+index 0000000..95e184d
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/banner_stremio.xml
 @@ -0,0 +1,41 @@
@@ -1570,45 +1719,45 @@ index 00000000..5aded0b5
 +     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
 +     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
 +     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour (no edge line: the card is just glass), and the logo a little
-+     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
-+     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 18.9dp of 86dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Drawn at the card's real size (no ImageView rescaling), which keeps the logo's edges smooth. Made by work/icons/build_icons.py. -->
 +<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#66000000" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#10FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#127B5BF5" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="58dp" android:height="58dp" android:top="37dp" android:gravity="top|center_horizontal"
++    <item android:width="27.7dp" android:height="27.7dp" android:top="17.9dp" android:gravity="top|center_horizontal"
 +        android:drawable="@drawable/glyph_stremio" />
 +</layer-list>
 diff --git a/launcher/app/src/main/res/drawable/banner_surfshark.xml b/launcher/app/src/main/res/drawable/banner_surfshark.xml
 new file mode 100644
-index 00000000..208f0ef9
+index 0000000..18d6a95
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/banner_surfshark.xml
 @@ -0,0 +1,41 @@
@@ -1617,45 +1766,45 @@ index 00000000..208f0ef9
 +     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
 +     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
 +     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour (no edge line: the card is just glass), and the logo a little
-+     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
-+     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 18.9dp of 86dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Drawn at the card's real size (no ImageView rescaling), which keeps the logo's edges smooth. Made by work/icons/build_icons.py. -->
 +<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#66000000" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#10FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#1214B8C6" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="56dp" android:height="56dp" android:top="38dp" android:gravity="top|center_horizontal"
++    <item android:width="26.8dp" android:height="26.8dp" android:top="18.4dp" android:gravity="top|center_horizontal"
 +        android:drawable="@drawable/glyph_surfshark" />
 +</layer-list>
 diff --git a/launcher/app/src/main/res/drawable/banner_weather.xml b/launcher/app/src/main/res/drawable/banner_weather.xml
 new file mode 100644
-index 00000000..d396e519
+index 0000000..77942ea
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/banner_weather.xml
 @@ -0,0 +1,41 @@
@@ -1664,45 +1813,45 @@ index 00000000..d396e519
 +     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
 +     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
 +     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour (no edge line: the card is just glass), and the logo a little
-+     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
-+     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 18.9dp of 86dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Drawn at the card's real size (no ImageView rescaling), which keeps the logo's edges smooth. Made by work/icons/build_icons.py. -->
 +<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#66000000" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#10FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#123C9BF0" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="62dp" android:height="62dp" android:top="35dp" android:gravity="top|center_horizontal"
++    <item android:width="29.6dp" android:height="29.6dp" android:top="17dp" android:gravity="top|center_horizontal"
 +        android:drawable="@drawable/glyph_weather" />
 +</layer-list>
 diff --git a/launcher/app/src/main/res/drawable/banner_youtube.xml b/launcher/app/src/main/res/drawable/banner_youtube.xml
 new file mode 100644
-index 00000000..05779256
+index 0000000..7095e35
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/banner_youtube.xml
 @@ -0,0 +1,41 @@
@@ -1711,44 +1860,44 @@ index 00000000..05779256
 +     wallpaper is painted underneath by the launcher (GlassBackdrop, the card's background). On top of it: a smoky dark veil
 +     (the glass is darker than what is behind it), a soft light that fades out towards the middle and a diagonal light from the
 +     top-left corner (the uneven "gradient frosting"), a flat whisper of the app's colour (no edge line: the card is just glass), and the logo a little
-+     above centre so the name (drawn by the launcher) sits tight under it. Radius 40dp of 180dp = the 22% corner
-+     AppAdapter.cornerRadius clips to. Made by work/icons/build_icons.py. -->
++     above centre so the name (drawn by the launcher) sits tight under it. Radius 18.9dp of 86dp = the 22% corner
++     AppAdapter.cornerRadius clips to. Drawn at the card's real size (no ImageView rescaling), which keeps the logo's edges smooth. Made by work/icons/build_icons.py. -->
 +<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#66000000" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#10FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.55" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <gradient android:angle="315" android:startColor="#24FFFFFF" android:endColor="#00FFFFFF" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="180dp" android:height="162dp">
++    <item android:width="86dp" android:height="77.5dp">
 +        <shape android:shape="rectangle">
 +            <solid android:color="#12FF2D3B" />
-+            <corners android:radius="40dp" />
++            <corners android:radius="18.9dp" />
 +        </shape>
 +    </item>
-+    <item android:width="66dp" android:height="66dp" android:top="33dp" android:gravity="top|center_horizontal"
++    <item android:width="31.5dp" android:height="31.5dp" android:top="16dp" android:gravity="top|center_horizontal"
 +        android:drawable="@drawable/glyph_youtube" />
 +</layer-list>
 diff --git a/launcher/app/src/main/res/drawable/glass_panel.xml b/launcher/app/src/main/res/drawable/glass_panel.xml
-index f8224da1..e4cf7cc9 100644
+index f8224da..e4cf7cc 100644
 --- a/launcher/app/src/main/res/drawable/glass_panel.xml
 +++ b/launcher/app/src/main/res/drawable/glass_panel.xml
 @@ -1,10 +1,18 @@
@@ -1775,7 +1924,7 @@ index f8224da1..e4cf7cc9 100644
  </layer-list>
 diff --git a/launcher/app/src/main/res/drawable/glass_panel_frost.xml b/launcher/app/src/main/res/drawable/glass_panel_frost.xml
 new file mode 100644
-index 00000000..6ee3c5d9
+index 0000000..6ee3c5d
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/glass_panel_frost.xml
 @@ -0,0 +1,18 @@
@@ -1799,7 +1948,7 @@ index 00000000..6ee3c5d9
 +</layer-list>
 diff --git a/launcher/app/src/main/res/drawable/glyph_browsehere.xml b/launcher/app/src/main/res/drawable/glyph_browsehere.xml
 new file mode 100644
-index 00000000..929a85da
+index 0000000..929a85d
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/glyph_browsehere.xml
 @@ -0,0 +1,5 @@
@@ -1810,7 +1959,7 @@ index 00000000..929a85da
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/glyph_googleplay.xml b/launcher/app/src/main/res/drawable/glyph_googleplay.xml
 new file mode 100644
-index 00000000..651917cb
+index 0000000..651917c
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/glyph_googleplay.xml
 @@ -0,0 +1,5 @@
@@ -1821,7 +1970,7 @@ index 00000000..651917cb
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/glyph_stremio.xml b/launcher/app/src/main/res/drawable/glyph_stremio.xml
 new file mode 100644
-index 00000000..9a181918
+index 0000000..9a18191
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/glyph_stremio.xml
 @@ -0,0 +1,5 @@
@@ -1832,7 +1981,7 @@ index 00000000..9a181918
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/glyph_surfshark.xml b/launcher/app/src/main/res/drawable/glyph_surfshark.xml
 new file mode 100644
-index 00000000..d672bdd1
+index 0000000..d672bdd
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/glyph_surfshark.xml
 @@ -0,0 +1,5 @@
@@ -1843,7 +1992,7 @@ index 00000000..d672bdd1
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/glyph_weather.xml b/launcher/app/src/main/res/drawable/glyph_weather.xml
 new file mode 100644
-index 00000000..6f703c2d
+index 0000000..6f703c2
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/glyph_weather.xml
 @@ -0,0 +1,6 @@
@@ -1855,7 +2004,7 @@ index 00000000..6f703c2d
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/glyph_youtube.xml b/launcher/app/src/main/res/drawable/glyph_youtube.xml
 new file mode 100644
-index 00000000..fc892703
+index 0000000..fc89270
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/glyph_youtube.xml
 @@ -0,0 +1,5 @@
@@ -1866,7 +2015,7 @@ index 00000000..fc892703
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/ic_weather_bolt.xml b/launcher/app/src/main/res/drawable/ic_weather_bolt.xml
 new file mode 100644
-index 00000000..a04d0c64
+index 0000000..a04d0c6
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/ic_weather_bolt.xml
 @@ -0,0 +1,4 @@
@@ -1876,7 +2025,7 @@ index 00000000..a04d0c64
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/ic_weather_cloud.xml b/launcher/app/src/main/res/drawable/ic_weather_cloud.xml
 new file mode 100644
-index 00000000..9f85b54c
+index 0000000..9f85b54
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/ic_weather_cloud.xml
 @@ -0,0 +1,4 @@
@@ -1886,7 +2035,7 @@ index 00000000..9f85b54c
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/ic_weather_moon.xml b/launcher/app/src/main/res/drawable/ic_weather_moon.xml
 new file mode 100644
-index 00000000..76a553b8
+index 0000000..76a553b
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/ic_weather_moon.xml
 @@ -0,0 +1,4 @@
@@ -1896,7 +2045,7 @@ index 00000000..76a553b8
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/ic_weather_rain.xml b/launcher/app/src/main/res/drawable/ic_weather_rain.xml
 new file mode 100644
-index 00000000..f7bb729d
+index 0000000..f7bb729
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/ic_weather_rain.xml
 @@ -0,0 +1,5 @@
@@ -1907,7 +2056,7 @@ index 00000000..f7bb729d
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/ic_weather_snow.xml b/launcher/app/src/main/res/drawable/ic_weather_snow.xml
 new file mode 100644
-index 00000000..f9ecd1f3
+index 0000000..f9ecd1f
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/ic_weather_snow.xml
 @@ -0,0 +1,4 @@
@@ -1917,7 +2066,7 @@ index 00000000..f9ecd1f3
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/ic_weather_sun.xml b/launcher/app/src/main/res/drawable/ic_weather_sun.xml
 new file mode 100644
-index 00000000..d2cf302c
+index 0000000..d2cf302
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/ic_weather_sun.xml
 @@ -0,0 +1,6 @@
@@ -1928,7 +2077,7 @@ index 00000000..d2cf302c
 +    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.9" android:strokeLineCap="round" android:pathData="M12,2.4 V4.6 M12,19.4 V21.6 M2.4,12 H4.6 M19.4,12 H21.6 M5.2,5.2 L6.8,6.8 M17.2,17.2 L18.8,18.8 M5.2,18.8 L6.8,17.2 M17.2,6.8 L18.8,5.2"/>
 +</vector>
 diff --git a/launcher/app/src/main/res/drawable/pill_bg.xml b/launcher/app/src/main/res/drawable/pill_bg.xml
-index cb93ccad..416a2719 100644
+index cb93cca..416a271 100644
 --- a/launcher/app/src/main/res/drawable/pill_bg.xml
 +++ b/launcher/app/src/main/res/drawable/pill_bg.xml
 @@ -3,7 +3,7 @@
@@ -1974,7 +2123,7 @@ index cb93ccad..416a2719 100644
  </selector>
 diff --git a/launcher/app/src/main/res/drawable/pill_glass.xml b/launcher/app/src/main/res/drawable/pill_glass.xml
 new file mode 100644
-index 00000000..40c16fae
+index 0000000..40c16fa
 --- /dev/null
 +++ b/launcher/app/src/main/res/drawable/pill_glass.xml
 @@ -0,0 +1,17 @@
@@ -2700,7 +2849,7 @@ literal 0
 HcmV?d00001
 
 diff --git a/launcher/app/src/main/res/layout/activity_main.xml b/launcher/app/src/main/res/layout/activity_main.xml
-index c037d247..ed472ba1 100644
+index c037d24..ed472ba 100644
 --- a/launcher/app/src/main/res/layout/activity_main.xml
 +++ b/launcher/app/src/main/res/layout/activity_main.xml
 @@ -182,7 +182,7 @@
@@ -2806,7 +2955,7 @@ index c037d247..ed472ba1 100644
                  android:clipToPadding="false"
                  android:orientation="horizontal">
 diff --git a/launcher/app/src/main/res/layout/item_app.xml b/launcher/app/src/main/res/layout/item_app.xml
-index d445bf77..c3569bfb 100644
+index d445bf7..c3569bf 100644
 --- a/launcher/app/src/main/res/layout/item_app.xml
 +++ b/launcher/app/src/main/res/layout/item_app.xml
 @@ -45,7 +45,7 @@
@@ -2819,7 +2968,7 @@ index d445bf77..c3569bfb 100644
      </FrameLayout>
  
 diff --git a/launcher/app/src/main/res/values/config.xml b/launcher/app/src/main/res/values/config.xml
-index a9987423..bd6fdea2 100644
+index a998742..dbe2770 100644
 --- a/launcher/app/src/main/res/values/config.xml
 +++ b/launcher/app/src/main/res/values/config.xml
 @@ -17,10 +17,12 @@
@@ -3044,7 +3193,7 @@ index a9987423..bd6fdea2 100644
 +    <string name="glass_style" translatable="false">lift</string>
  </resources>
 diff --git a/launcher/app/src/main/res/values/fonts.xml b/launcher/app/src/main/res/values/fonts.xml
-index adbb30db..6c57dd27 100644
+index adbb30d..6c57dd2 100644
 --- a/launcher/app/src/main/res/values/fonts.xml
 +++ b/launcher/app/src/main/res/values/fonts.xml
 @@ -7,4 +7,8 @@
@@ -3057,7 +3206,7 @@ index adbb30db..6c57dd27 100644
 +    <string name="font_label" translatable="false">@font/inter</string>
  </resources>
 diff --git a/launcher/app/src/main/res/values/styles.xml b/launcher/app/src/main/res/values/styles.xml
-index 25089128..8b5997c5 100644
+index 2508912..8b5997c 100644
 --- a/launcher/app/src/main/res/values/styles.xml
 +++ b/launcher/app/src/main/res/values/styles.xml
 @@ -9,7 +9,7 @@
@@ -3083,7 +3232,7 @@ index 25089128..8b5997c5 100644
      </style>
  
 diff --git a/launcher/app/src/test/java/com/gathin/tvhome/WallpaperMoodTest.java b/launcher/app/src/test/java/com/gathin/tvhome/WallpaperMoodTest.java
-index d73769c8..71c2a48e 100644
+index d73769c..71c2a48 100644
 --- a/launcher/app/src/test/java/com/gathin/tvhome/WallpaperMoodTest.java
 +++ b/launcher/app/src/test/java/com/gathin/tvhome/WallpaperMoodTest.java
 @@ -73,4 +73,48 @@ public class WallpaperMoodTest {
